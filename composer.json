@@ -8,23 +8,33 @@
         "composer",
         "autoload",
         "discovery",
-        "modules"
+        "modules",
+        "psr-4",
+        "namespace",
+        "automation"
     ],
     "authors": [
         {
-            "name": "Module Discovery Team",
-            "email": "team@example.com"
+            "name": "Laravel Module Discovery Team",
+            "email": "team@laravel-module-discovery.com"
         }
     ],
+    "homepage": "https://github.com/laravel-module-discovery/composer-hook",
+    "support": {
+        "issues": "https://github.com/laravel-module-discovery/composer-hook/issues",
+        "source": "https://github.com/laravel-module-discovery/composer-hook"
+    },
     "require": {
         "php": "^8.1",
-        "illuminate/console": "^12.0",
-        "illuminate/support": "^12.0",
+        "illuminate/console": "^10.0|^11.0|^12.0",
+        "illuminate/support": "^10.0|^11.0|^12.0",
         "composer/composer": "^2.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^10.0",
-        "orchestra/testbench": "^8.0|^9.0"
+        "phpunit/phpunit": "^10.0|^11.0",
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "mockery/mockery": "^1.6",
+        "phpstan/phpstan": "^1.10"
     },
     "autoload": {
         "psr-4": {
@@ -41,20 +51,63 @@
             "providers": [
                 "LaravelModuleDiscovery\\ComposerHook\\Providers\\ModuleDiscoveryServiceProvider"
             ]
+        },
+        "composer-scripts": {
+            "auto-install": true,
+            "timeout": 60,
+            "memory-limit": "256M"
         }
     },
     "scripts": {
-        "test": "phpunit",
+        "test": [
+            "phpunit"
+        ],
+        "test-coverage": [
+            "phpunit --coverage-html coverage"
+        ],
+        "analyse": [
+            "phpstan analyse src --level=8"
+        ],
         "post-install-cmd": [
-            "php artisan module:discover"
+            "LaravelModuleDiscovery\\ComposerHook\\Scripts\\ComposerScripts::postInstall"
         ],
         "post-update-cmd": [
-            "php artisan module:discover"
+            "LaravelModuleDiscovery\\ComposerHook\\Scripts\\ComposerScripts::postUpdate"
         ],
         "post-autoload-dump": [
-            "php artisan module:discover"
+            "LaravelModuleDiscovery\\ComposerHook\\Scripts\\ComposerScripts::postAutoloadDump"
+        ],
+        "install-hooks": [
+            "LaravelModuleDiscovery\\ComposerHook\\Scripts\\ComposerHookInstaller::install"
+        ],
+        "uninstall-hooks": [
+            "LaravelModuleDiscovery\\ComposerHook\\Scripts\\ComposerHookInstaller::uninstall"
         ]
     },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit test suite",
+        "test-coverage": "Run tests with coverage report",
+        "analyse": "Run static analysis with PHPStan",
+        "install-hooks": "Install Composer hooks in host project",
+        "uninstall-hooks": "Remove Composer hooks from host project"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "composer/installers": true
+        },
+        "platform": {
+            "php": "8.1"
+        }
+    },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "funding": [
+        {
+            "type": "github",
+            "url": "https://github.com/sponsors/laravel-module-discovery"
+        }
+    ]
 }

@@ -6,6 +6,9 @@ namespace LaravelModuleDiscovery\ComposerHook\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use LaravelModuleDiscovery\ComposerHook\Commands\ModuleDiscoverCommand;
+use LaravelModuleDiscovery\ComposerHook\Commands\VerifyNamespacesCommand;
+use LaravelModuleDiscovery\ComposerHook\Commands\InspectAutoloaderCommand;
+use LaravelModuleDiscovery\ComposerHook\Commands\TestAutoloadingCommand;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
@@ -20,7 +23,7 @@ use LaravelModuleDiscovery\ComposerHook\Services\PathResolverService;
 /**
  * ModuleDiscoveryServiceProvider registers the module discovery services and commands.
  * This service provider binds all interfaces to their concrete implementations
- * and registers the Artisan command for module discovery operations.
+ * and registers the Artisan commands for module discovery operations.
  *
  * The provider follows Laravel's service container patterns and ensures
  * proper dependency injection for all module discovery components.
@@ -97,7 +100,7 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
 
     /**
      * Registers the Artisan commands provided by the package.
-     * Binds the module discovery command with proper dependency
+     * Binds all module discovery commands with proper dependency
      * injection of required service interfaces.
      */
     private function registerCommands(): void
@@ -107,6 +110,25 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
                 $app->make(ClassDiscoveryInterface::class),
                 $app->make(ComposerLoaderInterface::class),
                 $app->make(ConfigurationInterface::class)
+            );
+        });
+
+        $this->app->singleton(VerifyNamespacesCommand::class, function ($app) {
+            return new VerifyNamespacesCommand(
+                $app->make(ComposerLoaderInterface::class),
+                $app->make(ConfigurationInterface::class)
+            );
+        });
+
+        $this->app->singleton(InspectAutoloaderCommand::class, function ($app) {
+            return new InspectAutoloaderCommand(
+                $app->make(ComposerLoaderInterface::class)
+            );
+        });
+
+        $this->app->singleton(TestAutoloadingCommand::class, function ($app) {
+            return new TestAutoloadingCommand(
+                $app->make(ComposerLoaderInterface::class)
             );
         });
     }
@@ -130,7 +152,7 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
 
     /**
      * Registers console commands with Laravel's Artisan system.
-     * Makes the module discovery command available through
+     * Makes all module discovery commands available through
      * the Artisan command-line interface.
      */
     private function registerConsoleCommands(): void
@@ -138,6 +160,9 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 ModuleDiscoverCommand::class,
+                VerifyNamespacesCommand::class,
+                InspectAutoloaderCommand::class,
+                TestAutoloadingCommand::class,
             ]);
         }
     }
@@ -159,6 +184,9 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
             ComposerLoaderInterface::class,
             ConfigurationInterface::class,
             ModuleDiscoverCommand::class,
+            VerifyNamespacesCommand::class,
+            InspectAutoloaderCommand::class,
+            TestAutoloadingCommand::class,
         ];
     }
 }

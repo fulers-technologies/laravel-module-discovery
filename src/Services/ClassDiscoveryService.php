@@ -1,6 +1,6 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Services;
 
@@ -56,7 +56,7 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         private readonly PathResolverInterface $pathResolver,
         private readonly ConfigurationInterface $configuration
     ) {
-        $this->status = DiscoveryStatusEnum::INITIALIZED;
+        $this->status         = DiscoveryStatusEnum::INITIALIZED;
         $this->discoveryStats = [];
     }
 
@@ -102,15 +102,15 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
     public function discoverClasses(string $directoryPath): array
     {
         $this->status = DiscoveryStatusEnum::IN_PROGRESS;
-        $startTime = microtime(true);
-        
+        $startTime    = microtime(true);
+
         // Debug: Show what directory we're scanning
         $this->d("🔍 Starting discovery in directory: {$directoryPath}");
         $this->d("📁 Directory exists: " . (is_dir($directoryPath) ? 'YES' : 'NO'));
         $this->d("📖 Directory readable: " . (is_readable($directoryPath) ? 'YES' : 'NO'));
-        
+
         try {
-            if (!$this->validateDirectory($directoryPath)) {
+            if (! $this->validateDirectory($directoryPath)) {
                 $this->d("❌ Directory validation failed for: {$directoryPath}");
                 throw DirectoryNotFoundException::modulesDirectoryMissing(
                     $directoryPath,
@@ -120,10 +120,10 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
             }
 
             $discoveredClasses = [];
-            $processedFiles = 0;
-            $errorFiles = [];
-            $maxErrors = $this->configuration->getMaxErrorsBeforeStop();
-            $continueOnErrors = $this->configuration->shouldContinueOnErrors();
+            $processedFiles    = 0;
+            $errorFiles        = [];
+            $maxErrors         = $this->configuration->getMaxErrorsBeforeStop();
+            $continueOnErrors  = $this->configuration->shouldContinueOnErrors();
 
             $this->d("⚙️ Configuration:");
             $this->d("   - Max errors: {$maxErrors}");
@@ -147,22 +147,22 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
                 $this->d("📏 Max scan depth set to: {$maxDepth}");
             }
 
-            $totalFiles = 0;
+            $totalFiles   = 0;
             $skippedFiles = 0;
-            
+
             foreach ($recursiveIterator as $file) {
                 $totalFiles++;
                 $filePath = $file->getPathname();
-                
+
                 $this->d("📄 Found file: {$filePath}");
-                
+
                 // Check if we should stop due to too many errors
-                if (!$continueOnErrors && count($errorFiles) >= $maxErrors) {
+                if (! $continueOnErrors && count($errorFiles) >= $maxErrors) {
                     $this->d("🛑 Stopping due to too many errors ({$maxErrors})");
                     break;
                 }
 
-                if (!$this->shouldProcessFile($filePath)) {
+                if (! $this->shouldProcessFile($filePath)) {
                     $skippedFiles++;
                     $this->d("⏭️ Skipping file: {$filePath}");
                     $this->d("   - Extension: " . pathinfo($filePath, PATHINFO_EXTENSION));
@@ -174,30 +174,41 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
 
                 try {
                     $namespace = $this->namespaceExtractor->extractNamespace($filePath);
-                    
+
                     $this->d("🔍 Extracted namespace: " . ($namespace ?? 'NULL'));
-                    
+
                     if ($namespace !== null) {
                         $shouldInclude = $this->shouldIncludeNamespace($namespace);
                         $this->d("📋 Should include namespace '{$namespace}': " . ($shouldInclude ? 'YES' : 'NO'));
-                        
+
                         if ($shouldInclude) {
-                            $directoryPath = $this->pathResolver->getDirectoryPath($filePath);
-                            $discoveredClasses[$namespace] = $directoryPath;
-                            $this->d("✅ Added namespace: {$namespace} => {$directoryPath}");
+                            // Get the base namespace (e.g., App\Modules\Example from App\Modules\Example\Controllers)
+                            $baseNamespace = $this->extractBaseNamespace($namespace);
+                            $basePath      = $this->getBasePathForNamespace($filePath, $namespace, $baseNamespace);
+
+                            $this->d("🎯 Base namespace: {$baseNamespace}");
+                            $this->d("🎯 Base path: {$basePath}");
+
+                            // Only add if we haven't seen this base namespace before
+                            if (! isset($discoveredClasses[$baseNamespace])) {
+                                $discoveredClasses[$baseNamespace] = $basePath;
+                                $this->d("✅ Added base namespace: {$baseNamespace} => {$basePath}");
+                            } else {
+                                $this->d("⏭️ Base namespace already exists: {$baseNamespace}");
+                            }
                         }
                     }
 
                     $processedFiles++;
                 } catch (\Exception $e) {
                     $errorFiles[] = [
-                        'file' => $filePath,
+                        'file'  => $filePath,
                         'error' => $e->getMessage(),
                     ];
 
                     $this->d("❌ Error processing file {$filePath}: " . $e->getMessage());
 
-                    if (!$continueOnErrors) {
+                    if (! $continueOnErrors) {
                         throw $e;
                     }
                 }
@@ -210,7 +221,7 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
             $this->d("   - Namespaces discovered: " . count($discoveredClasses));
             $this->d("   - Error files: " . count($errorFiles));
 
-            if (!empty($discoveredClasses)) {
+            if (! empty($discoveredClasses)) {
                 $this->d("🎯 Discovered namespaces:");
                 foreach ($discoveredClasses as $namespace => $path) {
                     $this->d("   - {$namespace} => {$path}");
@@ -218,34 +229,96 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
             }
 
             $this->discoveryStats = [
-                'processed_files' => $processedFiles,
+                'processed_files'       => $processedFiles,
                 'discovered_namespaces' => count($discoveredClasses),
-                'processing_time' => microtime(true) - $startTime,
-                'error_files' => $errorFiles,
-                'directory_path' => $directoryPath,
-                'max_scan_depth' => $maxDepth,
-                'continue_on_errors' => $continueOnErrors,
-                'total_files_found' => $totalFiles,
-                'files_skipped' => $skippedFiles,
+                'processing_time'       => microtime(true) - $startTime,
+                'error_files'           => $errorFiles,
+                'directory_path'        => $directoryPath,
+                'max_scan_depth'        => $maxDepth,
+                'continue_on_errors'    => $continueOnErrors,
+                'total_files_found'     => $totalFiles,
+                'files_skipped'         => $skippedFiles,
             ];
 
             $this->status = DiscoveryStatusEnum::COMPLETED;
-            
+
             return $discoveredClasses;
 
         } catch (\Exception $e) {
-            $this->status = DiscoveryStatusEnum::FAILED;
-            $this->discoveryStats['error'] = $e->getMessage();
+            $this->status                            = DiscoveryStatusEnum::FAILED;
+            $this->discoveryStats['error']           = $e->getMessage();
             $this->discoveryStats['processing_time'] = microtime(true) - $startTime;
-            
+
             $this->d("💥 Discovery failed with error: " . $e->getMessage());
-            
+
             if ($e instanceof DirectoryNotFoundException || $e instanceof ModuleDiscoveryException) {
                 throw $e;
             }
-            
+
             throw ModuleDiscoveryException::scanningFailed($directoryPath, $e->getMessage());
         }
+    }
+
+    /**
+     * Extracts the base namespace from a full namespace.
+     * Converts a full namespace like "App\Modules\Example\Controllers"
+     * to the base module namespace "App\Modules\Example".
+     *
+     * Parameters:
+     *   - string $fullNamespace: The complete namespace.
+     *
+     * Returns:
+     *   - string: The base namespace for the module.
+     */
+    private function extractBaseNamespace(string $fullNamespace): string
+    {
+        // For App\Modules\Example\Controllers, we want App\Modules\Example
+        $parts = explode('\\', $fullNamespace);
+
+        // Find the "Modules" part and take up to the next part
+        $moduleIndex = array_search('Modules', $parts);
+        if ($moduleIndex !== false && isset($parts[$moduleIndex + 1])) {
+            // Take up to the module name (e.g., App\Modules\Example)
+            return implode('\\', array_slice($parts, 0, $moduleIndex + 2));
+        }
+
+        // Fallback: take first 3 parts if it looks like App\Modules\ModuleName
+        if (count($parts) >= 3) {
+            return implode('\\', array_slice($parts, 0, 3));
+        }
+
+        return $fullNamespace;
+    }
+
+    /**
+     * Gets the base path for a namespace based on the file path.
+     * Calculates the directory path that should be registered for the base namespace.
+     *
+     * Parameters:
+     *   - string $filePath: The path to the file containing the namespace.
+     *   - string $fullNamespace: The complete namespace found in the file.
+     *   - string $baseNamespace: The base namespace to register.
+     *
+     * Returns:
+     *   - string: The base path for the namespace.
+     */
+    private function getBasePathForNamespace(string $filePath, string $fullNamespace, string $baseNamespace): string
+    {
+        $fileDir = dirname($filePath);
+
+        // Calculate how many levels to go up from the file to the base namespace
+        $fullParts = explode('\\', $fullNamespace);
+        $baseParts = explode('\\', $baseNamespace);
+
+        $levelsUp = count($fullParts) - count($baseParts);
+
+        // Go up the directory structure
+        $basePath = $fileDir;
+        for ($i = 0; $i < $levelsUp; $i++) {
+            $basePath = dirname($basePath);
+        }
+
+        return $basePath;
     }
 
     /**
@@ -261,26 +334,26 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
     public function validateDirectory(string $directoryPath): bool
     {
         $this->d("🔍 Validating directory: {$directoryPath}");
-        
-        if (!is_dir($directoryPath) || !is_readable($directoryPath)) {
+
+        if (! is_dir($directoryPath) || ! is_readable($directoryPath)) {
             $this->d("❌ Directory validation failed: not a directory or not readable");
             return false;
         }
 
         // Check if directory is in excluded list
         $excludedDirectories = $this->configuration->getExcludedDirectories();
-        $directoryName = basename($directoryPath);
-        
+        $directoryName       = basename($directoryPath);
+
         $this->d("📋 Excluded directories: " . implode(', ', $excludedDirectories));
         $this->d("📁 Current directory name: {$directoryName}");
-        
+
         $isExcluded = in_array($directoryName, $excludedDirectories, true);
-        
+
         if ($isExcluded) {
             $this->d("❌ Directory is in excluded list");
             return false;
         }
-        
+
         $this->d("✅ Directory validation passed");
         return true;
     }
@@ -296,10 +369,10 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
     public function getDiscoveryStatus(): array
     {
         return [
-            'status' => $this->status->value,
+            'status'             => $this->status->value,
             'status_description' => $this->status->getDescription(),
-            'is_terminal' => $this->status->isTerminal(),
-            'statistics' => $this->discoveryStats,
+            'is_terminal'        => $this->status->isTerminal(),
+            'statistics'         => $this->discoveryStats,
         ];
     }
 
@@ -322,10 +395,10 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         }
 
         // Check file extension against supported extensions
-        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+        $extension           = pathinfo($filePath, PATHINFO_EXTENSION);
         $supportedExtensions = $this->configuration->getSupportedExtensions();
-        
-        if (!in_array($extension, $supportedExtensions, true)) {
+
+        if (! in_array($extension, $supportedExtensions, true)) {
             return false;
         }
 
@@ -350,12 +423,12 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         // Check namespace length requirements
         $minLength = $this->configuration->getMinNamespaceLength();
         $maxLength = $this->configuration->getMaxNamespaceLength();
-        
+
         $this->d("📏 Namespace length check for '{$namespace}':");
         $this->d("   - Length: " . strlen($namespace));
         $this->d("   - Min required: {$minLength}");
         $this->d("   - Max allowed: {$maxLength}");
-        
+
         if (strlen($namespace) < $minLength || strlen($namespace) > $maxLength) {
             $this->d("❌ Namespace length validation failed");
             return false;
@@ -364,7 +437,7 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         // Check excluded namespace prefixes
         $excludedPrefixes = $this->configuration->getExcludedNamespacePrefixes();
         $this->d("🚫 Excluded prefixes: " . implode(', ', $excludedPrefixes));
-        
+
         foreach ($excludedPrefixes as $prefix) {
             if (str_starts_with($namespace, $prefix)) {
                 $this->d("❌ Namespace matches excluded prefix: {$prefix}");
