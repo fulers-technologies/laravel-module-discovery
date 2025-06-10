@@ -25,7 +25,7 @@ return [
     | You can override this using the --path option in the Artisan command.
     |
     */
-    'default_modules_directory' => env('MODULE_DISCOVERY_PATH', 'app/Modules'),
+    'default_modules_directory' => 'app/Modules',
 
     /*
     |--------------------------------------------------------------------------
@@ -57,31 +57,31 @@ return [
         | Maximum directory depth for recursive scanning operations.
         | Prevents infinite recursion and limits scanning depth for performance.
         */
-        'max_scan_depth' => env('MODULE_DISCOVERY_MAX_DEPTH', 10),
+        'max_scan_depth' => 10,
 
         /*
         | Maximum number of tokens to examine for namespace detection.
         | Limits parsing depth to improve performance for large PHP files.
         */
-        'max_tokens_to_examine' => env('MODULE_DISCOVERY_MAX_TOKENS', 100),
+        'max_tokens_to_examine' => 100,
 
         /*
         | Timeout value for discovery operations in seconds.
         | Maximum time allowed for module discovery to prevent hanging.
         */
-        'timeout_seconds' => env('MODULE_DISCOVERY_TIMEOUT', 300),
+        'timeout_seconds' => 300,
 
         /*
         | Enable or disable caching of namespace extraction results.
         | Caching improves performance when processing the same files multiple times.
         */
-        'enable_caching' => env('MODULE_DISCOVERY_CACHE_ENABLED', true),
+        'enable_caching' => true,
 
         /*
         | Skip hidden files and directories during scanning.
         | Hidden files/directories start with a dot (.) character.
         */
-        'skip_hidden_files' => env('MODULE_DISCOVERY_SKIP_HIDDEN', true),
+        'skip_hidden_files' => true,
     ],
 
     /*
@@ -98,19 +98,19 @@ return [
         | Enable strict namespace validation according to PSR-4 standards.
         | When enabled, only namespaces that strictly follow PSR-4 will be registered.
         */
-        'strict_psr4_validation' => env('MODULE_DISCOVERY_STRICT_PSR4', true),
+        'strict_psr4_validation' => true,
 
         /*
         | Minimum namespace length required for registration.
         | Namespaces shorter than this length will be rejected.
         */
-        'min_namespace_length' => env('MODULE_DISCOVERY_MIN_LENGTH', 3),
+        'min_namespace_length' => 3,
 
         /*
         | Maximum namespace length allowed for registration.
         | Namespaces longer than this length will be rejected.
         */
-        'max_namespace_length' => env('MODULE_DISCOVERY_MAX_LENGTH', 255),
+        'max_namespace_length' => 255,
 
         /*
         | Array of namespace prefixes that should be excluded from discovery.
@@ -153,25 +153,25 @@ return [
         | Enable automatic registration of discovered namespaces.
         | When disabled, namespaces will be discovered but not registered.
         */
-        'auto_register_namespaces' => env('MODULE_DISCOVERY_AUTO_REGISTER', true),
+        'auto_register_namespaces' => true,
 
         /*
         | Force re-registration of existing namespaces.
         | When enabled, existing namespace mappings will be overwritten.
         */
-        'force_reregistration' => env('MODULE_DISCOVERY_FORCE_REREGISTER', false),
+        'force_reregistration' => false,
 
         /*
         | Enable batch registration of multiple namespaces.
         | Improves performance when registering many namespaces simultaneously.
         */
-        'enable_batch_registration' => env('MODULE_DISCOVERY_BATCH_REGISTER', true),
+        'enable_batch_registration' => true,
 
         /*
         | Automatically apply registrations after discovery.
         | When enabled, the autoloader will be refreshed after registration.
         */
-        'auto_apply_registrations' => env('MODULE_DISCOVERY_AUTO_APPLY', true),
+        'auto_apply_registrations' => true,
     ],
 
     /*
@@ -189,43 +189,43 @@ return [
         | When enabled, module discovery will run automatically during
         | composer install, update, and dump-autoload operations.
         */
-        'auto_discovery_enabled' => env('MODULE_DISCOVERY_AUTO_ENABLED', true),
+        'auto_discovery_enabled' => true,
 
         /*
         | Script execution timeout in seconds.
         | Maximum time allowed for module discovery during Composer operations.
         */
-        'script_timeout' => env('MODULE_DISCOVERY_SCRIPT_TIMEOUT', 60),
+        'script_timeout' => 60,
 
         /*
         | Memory limit for script execution.
         | Memory limit setting for module discovery operations.
         */
-        'script_memory_limit' => env('MODULE_DISCOVERY_SCRIPT_MEMORY', '256M'),
+        'script_memory_limit' => '256M',
 
         /*
         | Enable verbose output during Composer operations.
         | Shows detailed information about discovery operations.
         */
-        'verbose_output' => env('MODULE_DISCOVERY_VERBOSE', false),
+        'verbose_output' => false,
 
         /*
         | Enable automatic hook installation.
         | Automatically adds script hooks to composer.json when package is installed.
         */
-        'auto_install_hooks' => env('MODULE_DISCOVERY_AUTO_HOOKS', true),
+        'auto_install_hooks' => true,
 
         /*
         | Retry failed operations during Composer scripts.
         | Number of retry attempts for failed discovery operations.
         */
-        'retry_attempts' => env('MODULE_DISCOVERY_RETRY_ATTEMPTS', 3),
+        'retry_attempts' => 3,
 
         /*
         | Delay between retry attempts in seconds.
         | Wait time between retry attempts for failed operations.
         */
-        'retry_delay' => env('MODULE_DISCOVERY_RETRY_DELAY', 1),
+        'retry_delay' => 1,
     ],
 
     /*
@@ -242,31 +242,31 @@ return [
         | Enable detailed logging of discovery operations.
         | Logs will include processing statistics and error information.
         */
-        'enable_detailed_logging' => env('MODULE_DISCOVERY_DETAILED_LOGGING', false),
+        'enable_detailed_logging' => false,
 
         /*
         | Log level for discovery operations.
         | Available levels: emergency, alert, critical, error, warning, notice, info, debug
         */
-        'log_level' => env('MODULE_DISCOVERY_LOG_LEVEL', 'info'),
+        'log_level' => 'info',
 
         /*
         | Log channel to use for discovery operations.
         | Must be a valid Laravel log channel defined in logging.php
         */
-        'log_channel' => env('MODULE_DISCOVERY_LOG_CHANNEL', 'single'),
+        'log_channel' => 'single',
 
         /*
         | Enable progress indicators during discovery operations.
         | Shows progress bars and status updates during long-running operations.
         */
-        'show_progress_indicators' => env('MODULE_DISCOVERY_SHOW_PROGRESS', true),
+        'show_progress_indicators' => true,
 
         /*
         | Default output verbosity level for the discovery command.
         | Controls how much information is displayed during command execution.
         */
-        'default_verbosity' => env('MODULE_DISCOVERY_VERBOSITY', 'normal'),
+        'default_verbosity' => 'normal',
     ],
 
     /*
@@ -283,31 +283,31 @@ return [
         | Continue discovery on file processing errors.
         | When enabled, individual file errors won't stop the entire discovery process.
         */
-        'continue_on_errors' => env('MODULE_DISCOVERY_CONTINUE_ON_ERRORS', true),
+        'continue_on_errors' => true,
 
         /*
         | Maximum number of file processing errors before stopping discovery.
         | Set to 0 for unlimited errors (when continue_on_errors is true).
         */
-        'max_errors_before_stop' => env('MODULE_DISCOVERY_MAX_ERRORS', 10),
+        'max_errors_before_stop' => 10,
 
         /*
         | Enable retry logic for failed operations.
         | Failed namespace extractions will be retried up to the specified limit.
         */
-        'enable_retry_logic' => env('MODULE_DISCOVERY_ENABLE_RETRY', false),
+        'enable_retry_logic' => false,
 
         /*
         | Maximum number of retry attempts for failed operations.
         | Only applies when enable_retry_logic is true.
         */
-        'max_retry_attempts' => env('MODULE_DISCOVERY_MAX_RETRIES', 3),
+        'max_retry_attempts' => 3,
 
         /*
         | Delay between retry attempts in milliseconds.
         | Prevents overwhelming the system during retry operations.
         */
-        'retry_delay_ms' => env('MODULE_DISCOVERY_RETRY_DELAY_MS', 100),
+        'retry_delay_ms' => 100,
     ],
 
     /*
@@ -324,31 +324,31 @@ return [
         | Enable memory usage optimization during discovery.
         | Reduces memory footprint by clearing caches and optimizing data structures.
         */
-        'optimize_memory_usage' => env('MODULE_DISCOVERY_OPTIMIZE_MEMORY', true),
+        'optimize_memory_usage' => true,
 
         /*
         | Maximum memory limit for discovery operations in MB.
         | Discovery will be aborted if memory usage exceeds this limit.
         */
-        'memory_limit_mb' => env('MODULE_DISCOVERY_MEMORY_LIMIT_MB', 256),
+        'memory_limit_mb' => 256,
 
         /*
         | Enable parallel processing for large directories.
         | Uses multiple processes to scan directories simultaneously (requires pcntl extension).
         */
-        'enable_parallel_processing' => env('MODULE_DISCOVERY_PARALLEL', false),
+        'enable_parallel_processing' => false,
 
         /*
         | Maximum number of parallel processes to use.
         | Only applies when enable_parallel_processing is true.
         */
-        'max_parallel_processes' => env('MODULE_DISCOVERY_MAX_PROCESSES', 4),
+        'max_parallel_processes' => 4,
 
         /*
         | Cache size limit for namespace extraction results.
         | Limits the number of cached results to prevent memory issues.
         */
-        'cache_size_limit' => env('MODULE_DISCOVERY_CACHE_LIMIT', 1000),
+        'cache_size_limit' => 1000,
     ],
 
     /*
@@ -365,31 +365,31 @@ return [
         | Enable debug mode for detailed error reporting.
         | Shows stack traces and additional debugging information.
         */
-        'debug_mode' => env('MODULE_DISCOVERY_DEBUG', false),
+        'debug_mode' => false,
 
         /*
         | Enable dry run mode for testing without actual registration.
         | Discovery will run but namespaces won't be registered with Composer.
         */
-        'dry_run_mode' => env('MODULE_DISCOVERY_DRY_RUN', false),
+        'dry_run_mode' => false,
 
         /*
         | Enable profiling of discovery operations.
         | Collects detailed performance metrics for optimization.
         */
-        'enable_profiling' => env('MODULE_DISCOVERY_PROFILING', false),
+        'enable_profiling' => false,
 
         /*
         | Save discovery results to file for analysis.
         | Results will be saved in JSON format to the specified path.
         */
-        'save_results_to_file' => env('MODULE_DISCOVERY_SAVE_RESULTS', false),
+        'save_results_to_file' => false,
 
         /*
         | Path where discovery results should be saved.
         | Only used when save_results_to_file is enabled.
         */
-        'results_file_path' => env('MODULE_DISCOVERY_RESULTS_PATH', 'storage/logs/module-discovery-results.json'),
+        'results_file_path' => 'storage/logs/module-discovery-results.json',
     ],
 
     /*

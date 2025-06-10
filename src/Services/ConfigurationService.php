@@ -1,11 +1,11 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Services;
 
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Config;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 
 /**
@@ -134,17 +134,17 @@ class ConfigurationService implements ConfigurationInterface
             ];
 
             foreach ($requiredKeys as $key) {
-                if (!$this->has($key)) {
+                if (! $this->has($key)) {
                     return false;
                 }
             }
 
             // Validate data types and ranges
-            if (!is_string($this->get('default_modules_directory'))) {
+            if (! is_string($this->get('default_modules_directory'))) {
                 return false;
             }
 
-            if (!is_array($this->get('supported_extensions'))) {
+            if (! is_array($this->get('supported_extensions'))) {
                 return false;
             }
 
@@ -583,49 +583,49 @@ class ConfigurationService implements ConfigurationInterface
     {
         return [
             'default_modules_directory' => 'app/Modules',
-            'supported_extensions' => ['php'],
-            'discovery' => [
-                'max_scan_depth' => 10,
+            'supported_extensions'      => ['php'],
+            'discovery'                 => [
+                'max_scan_depth'        => 10,
                 'max_tokens_to_examine' => 100,
-                'timeout_seconds' => 300,
-                'enable_caching' => true,
-                'skip_hidden_files' => true,
+                'timeout_seconds'       => 300,
+                'enable_caching'        => true,
+                'skip_hidden_files'     => true,
             ],
-            'validation' => [
-                'strict_psr4_validation' => true,
-                'min_namespace_length' => 3,
-                'max_namespace_length' => 255,
+            'validation'                => [
+                'strict_psr4_validation'      => true,
+                'min_namespace_length'        => 3,
+                'max_namespace_length'        => 255,
                 'excluded_namespace_prefixes' => [],
-                'excluded_directories' => ['vendor', 'node_modules', 'storage'],
+                'excluded_directories'        => ['vendor', 'node_modules', 'storage'],
             ],
-            'composer' => [
-                'auto_register_namespaces' => true,
-                'force_reregistration' => false,
+            'composer'                  => [
+                'auto_register_namespaces'  => true,
+                'force_reregistration'      => false,
                 'enable_batch_registration' => true,
-                'auto_apply_registrations' => true,
+                'auto_apply_registrations'  => true,
             ],
-            'error_handling' => [
-                'continue_on_errors' => true,
+            'error_handling'            => [
+                'continue_on_errors'     => true,
                 'max_errors_before_stop' => 10,
-                'enable_retry_logic' => false,
-                'max_retry_attempts' => 3,
-                'retry_delay_ms' => 100,
+                'enable_retry_logic'     => false,
+                'max_retry_attempts'     => 3,
+                'retry_delay_ms'         => 100,
             ],
-            'logging' => [
-                'enable_detailed_logging' => false,
-                'log_level' => 'info',
-                'log_channel' => 'single',
+            'logging'                   => [
+                'enable_detailed_logging'  => false,
+                'log_level'                => 'info',
+                'log_channel'              => 'single',
                 'show_progress_indicators' => true,
-                'default_verbosity' => 'normal',
+                'default_verbosity'        => 'normal',
             ],
-            'development' => [
-                'debug_mode' => false,
-                'dry_run_mode' => false,
-                'enable_profiling' => false,
+            'development'               => [
+                'debug_mode'           => false,
+                'dry_run_mode'         => false,
+                'enable_profiling'     => false,
                 'save_results_to_file' => false,
-                'results_file_path' => storage_path('logs/module-discovery-results.json'),
+                'results_file_path'    => storage_path('logs/module-discovery-results.json'),
             ],
-            'suggested_directories' => [
+            'suggested_directories'     => [
                 'app/Modules',
                 'modules',
                 'src/Modules',

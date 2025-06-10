@@ -6,19 +6,28 @@ namespace LaravelModuleDiscovery\ComposerHook\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use LaravelModuleDiscovery\ComposerHook\Commands\ModuleDiscoverCommand;
+use LaravelModuleDiscovery\ComposerHook\Commands\AttributeDiscoverCommand;
 use LaravelModuleDiscovery\ComposerHook\Commands\VerifyNamespacesCommand;
 use LaravelModuleDiscovery\ComposerHook\Commands\InspectAutoloaderCommand;
 use LaravelModuleDiscovery\ComposerHook\Commands\TestAutoloadingCommand;
+use LaravelModuleDiscovery\ComposerHook\Commands\DumpComposerInfoCommand;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\NamespaceExtractorInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\PathResolverInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\AttributeDiscoveryInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\AttributeRegistryInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\AttributeStorageInterface;
 use LaravelModuleDiscovery\ComposerHook\Services\ClassDiscoveryService;
 use LaravelModuleDiscovery\ComposerHook\Services\ComposerLoaderService;
 use LaravelModuleDiscovery\ComposerHook\Services\ConfigurationService;
 use LaravelModuleDiscovery\ComposerHook\Services\NamespaceExtractorService;
 use LaravelModuleDiscovery\ComposerHook\Services\PathResolverService;
+use LaravelModuleDiscovery\ComposerHook\Services\AttributeDiscoveryService;
+use LaravelModuleDiscovery\ComposerHook\Services\AttributeRegistryService;
+use LaravelModuleDiscovery\ComposerHook\Services\AttributeFileStorageService;
+use LaravelModuleDiscovery\ComposerHook\Services\ComposerEventService;
 
 /**
  * ModuleDiscoveryServiceProvider registers the module discovery services and commands.
@@ -45,6 +54,7 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->registerCoreServices();
+        $this->registerAttributeServices();
         $this->registerCommands();
     }
 
@@ -96,6 +106,44 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
                 $app->make(ConfigurationInterface::class)
             );
         });
+
+        // Register ComposerEventService
+        $this->app->singleton(ComposerEventService::class, function ($app) {
+            return ComposerEventService::make(
+                $app->make(ConfigurationInterface::class)
+            );
+        });
+    }
+
+    /**
+     * Registers the attribute discovery services.
+     * Binds attribute-related interfaces to their concrete implementations
+     * with proper dependency injection for attribute discovery functionality.
+     */
+    private function registerAttributeServices(): void
+    {
+        // Register AttributeStorageInterface
+        $this->app->singleton(AttributeStorageInterface::class, function ($app) {
+            return AttributeFileStorageService::make(
+                $app->make(ConfigurationInterface::class)
+            );
+        });
+
+        // Register AttributeRegistryInterface
+        $this->app->singleton(AttributeRegistryInterface::class, function ($app) {
+            return AttributeRegistryService::make(
+                $app->make(AttributeStorageInterface::class),
+                $app->make(ConfigurationInterface::class)
+            );
+        });
+
+        // Register AttributeDiscoveryInterface
+        $this->app->singleton(AttributeDiscoveryInterface::class, function ($app) {
+            return AttributeDiscoveryService::make(
+                $app->make(ClassDiscoveryInterface::class),
+                $app->make(ConfigurationInterface::class)
+            );
+        });
     }
 
     /**
@@ -105,6 +153,7 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
      */
     private function registerCommands(): void
     {
+        // Module Discovery Command
         $this->app->singleton(ModuleDiscoverCommand::class, function ($app) {
             return new ModuleDiscoverCommand(
                 $app->make(ClassDiscoveryInterface::class),
@@ -113,6 +162,16 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
             );
         });
 
+        // Attribute Discovery Command
+        $this->app->singleton(AttributeDiscoverCommand::class, function ($app) {
+            return new AttributeDiscoverCommand(
+                $app->make(AttributeDiscoveryInterface::class),
+                $app->make(AttributeRegistryInterface::class),
+                $app->make(ConfigurationInterface::class)
+            );
+        });
+
+        // Namespace Verification Command
         $this->app->singleton(VerifyNamespacesCommand::class, function ($app) {
             return new VerifyNamespacesCommand(
                 $app->make(ComposerLoaderInterface::class),
@@ -120,14 +179,23 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
             );
         });
 
+        // Autoloader Inspection Command
         $this->app->singleton(InspectAutoloaderCommand::class, function ($app) {
             return new InspectAutoloaderCommand(
                 $app->make(ComposerLoaderInterface::class)
             );
         });
 
+        // Autoloading Test Command
         $this->app->singleton(TestAutoloadingCommand::class, function ($app) {
             return new TestAutoloadingCommand(
+                $app->make(ComposerLoaderInterface::class)
+            );
+        });
+
+        // Composer Info Dump Command
+        $this->app->singleton(DumpComposerInfoCommand::class, function ($app) {
+            return new DumpComposerInfoCommand(
                 $app->make(ComposerLoaderInterface::class)
             );
         });
@@ -140,13 +208,31 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
      */
     private function publishConfiguration(): void
     {
+        // Publish module discovery configuration
         $this->publishes([
             __DIR__ . '/../../config/module-discovery.php' => config_path('module-discovery.php'),
-        ], 'config');
+        ], 'module-discovery-config');
 
+        // Publish attribute discovery configuration
+        $this->publishes([
+            __DIR__ . '/../../config/attribute-discovery.php' => config_path('attribute-discovery.php'),
+        ], 'attribute-discovery-config');
+
+        // Publish all configurations together
+        $this->publishes([
+            __DIR__ . '/../../config/module-discovery.php' => config_path('module-discovery.php'),
+            __DIR__ . '/../../config/attribute-discovery.php' => config_path('attribute-discovery.php'),
+        ], 'laravel-module-discovery-config');
+
+        // Merge configurations from package
         $this->mergeConfigFrom(
             __DIR__ . '/../../config/module-discovery.php',
             'module-discovery'
+        );
+
+        $this->mergeConfigFrom(
+            __DIR__ . '/../../config/attribute-discovery.php',
+            'attribute-discovery'
         );
     }
 
@@ -160,9 +246,11 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 ModuleDiscoverCommand::class,
+                AttributeDiscoverCommand::class,
                 VerifyNamespacesCommand::class,
                 InspectAutoloaderCommand::class,
                 TestAutoloadingCommand::class,
+                DumpComposerInfoCommand::class,
             ]);
         }
     }
@@ -178,15 +266,26 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
     public function provides(): array
     {
         return [
+            // Core Services
             ClassDiscoveryInterface::class,
             NamespaceExtractorInterface::class,
             PathResolverInterface::class,
             ComposerLoaderInterface::class,
             ConfigurationInterface::class,
+            ComposerEventService::class,
+
+            // Attribute Services
+            AttributeDiscoveryInterface::class,
+            AttributeRegistryInterface::class,
+            AttributeStorageInterface::class,
+
+            // Commands
             ModuleDiscoverCommand::class,
+            AttributeDiscoverCommand::class,
             VerifyNamespacesCommand::class,
             InspectAutoloaderCommand::class,
             TestAutoloadingCommand::class,
+            DumpComposerInfoCommand::class,
         ];
     }
 }
