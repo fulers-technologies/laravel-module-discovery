@@ -6,6 +6,7 @@ namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * InspectAutoloaderCommand provides detailed inspection of Composer's autoloader.
@@ -15,6 +16,11 @@ use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
  * The command provides comprehensive information about the current state
  * of Composer's autoloader for troubleshooting purposes.
  */
+#[AsCommand(
+    name: 'module:inspect-autoloader',
+    description: 'Inspect Composer autoloader configuration and registered namespaces',
+    aliases: ['inspect:autoloader', 'autoloader:inspect']
+)]
 class InspectAutoloaderCommand extends Command
 {
     /**

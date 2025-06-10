@@ -1,12 +1,13 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * VerifyNamespacesCommand provides verification of registered namespaces.
@@ -16,6 +17,11 @@ use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
  * The command provides detailed information about namespace registration
  * status and helps debug autoloading issues.
  */
+#[AsCommand(
+    name: 'module:verify',
+    description: 'Verify that discovered namespaces are properly registered with Composer autoloader',
+    aliases: ['verify:namespaces', 'namespaces:verify']
+)]
 class VerifyNamespacesCommand extends Command
 {
     /**
@@ -62,9 +68,9 @@ class VerifyNamespacesCommand extends Command
         $this->line('');
 
         try {
-            $classLoader = $this->composerLoader->getClassLoader();
+            $classLoader       = $this->composerLoader->getClassLoader();
             $specificNamespace = $this->option('namespace');
-            $isDetailed = $this->option('detailed') || $this->output->isVerbose();
+            $isDetailed        = $this->option('detailed') || $this->output->isVerbose();
 
             if ($specificNamespace) {
                 return $this->verifySpecificNamespace($classLoader, $specificNamespace, $isDetailed);
@@ -92,7 +98,7 @@ class VerifyNamespacesCommand extends Command
      */
     private function verifyAllNamespaces($classLoader, bool $isDetailed): int
     {
-        $psr4Prefixes = $classLoader->getPrefixesPsr4();
+        $psr4Prefixes     = $classLoader->getPrefixesPsr4();
         $moduleNamespaces = $this->filterModuleNamespaces($psr4Prefixes);
 
         if (empty($moduleNamespaces)) {
@@ -107,7 +113,7 @@ class VerifyNamespacesCommand extends Command
             $this->line('Try running: php artisan module:discover');
 
             // Check if we have module classes in the class map
-            $classMap = $classLoader->getClassMap();
+            $classMap           = $classLoader->getClassMap();
             $moduleClassesInMap = [];
 
             foreach ($classMap as $className => $filePath) {
@@ -116,7 +122,7 @@ class VerifyNamespacesCommand extends Command
                 }
             }
 
-            if (!empty($moduleClassesInMap)) {
+            if (! empty($moduleClassesInMap)) {
                 $this->line('');
                 $this->info('✅ However, found ' . count($moduleClassesInMap) . ' module classes in class map:');
                 foreach (array_slice($moduleClassesInMap, 0, 10) as $className) {
@@ -151,7 +157,7 @@ class VerifyNamespacesCommand extends Command
         $this->line('');
 
         $successCount = 0;
-        $totalCount = count($moduleNamespaces);
+        $totalCount   = count($moduleNamespaces);
 
         foreach ($moduleNamespaces as $namespace => $paths) {
             $status = $this->verifyNamespaceRegistration($namespace, $paths, $isDetailed);
@@ -191,15 +197,15 @@ class VerifyNamespacesCommand extends Command
         $this->info("🔍 Verifying specific namespace: {$namespace}");
         $this->line('');
 
-        $psr4Prefixes = $classLoader->getPrefixesPsr4();
+        $psr4Prefixes        = $classLoader->getPrefixesPsr4();
         $normalizedNamespace = rtrim($namespace, '\\') . '\\';
 
-        if (!isset($psr4Prefixes[$normalizedNamespace])) {
+        if (! isset($psr4Prefixes[$normalizedNamespace])) {
             $this->error("❌ Namespace '{$namespace}' is not registered in Composer PSR-4 autoloader");
             $this->line('');
 
             // Check if it's in the class map
-            $classMap = $classLoader->getClassMap();
+            $classMap        = $classLoader->getClassMap();
             $foundInClassMap = [];
 
             foreach ($classMap as $className => $filePath) {
@@ -208,7 +214,7 @@ class VerifyNamespacesCommand extends Command
                 }
             }
 
-            if (!empty($foundInClassMap)) {
+            if (! empty($foundInClassMap)) {
                 $this->warn("⚠️  However, found " . count($foundInClassMap) . " classes in class map:");
                 foreach ($foundInClassMap as $className) {
                     $this->line("  - {$className}");
@@ -222,7 +228,7 @@ class VerifyNamespacesCommand extends Command
             return 1;
         }
 
-        $paths = $psr4Prefixes[$normalizedNamespace];
+        $paths   = $psr4Prefixes[$normalizedNamespace];
         $success = $this->verifyNamespaceRegistration($namespace, $paths, $isDetailed);
 
         return $success ? 0 : 1;
@@ -247,11 +253,11 @@ class VerifyNamespacesCommand extends Command
         $this->line("🔍 <info>{$cleanNamespace}</info>");
 
         $allPathsValid = true;
-        $classesFound = 0;
+        $classesFound  = 0;
 
         foreach ($paths as $path) {
             $pathStatus = $this->verifyNamespacePath($path, $isDetailed);
-            if (!$pathStatus['valid']) {
+            if (! $pathStatus['valid']) {
                 $allPathsValid = false;
             }
             $classesFound += $pathStatus['classes_found'];
@@ -265,9 +271,9 @@ class VerifyNamespacesCommand extends Command
             }
         }
 
-        if (!$isDetailed) {
+        if (! $isDetailed) {
             $statusIcon = $allPathsValid ? '✅' : '❌';
-            $pathCount = count($paths);
+            $pathCount  = count($paths);
             $this->line("   {$statusIcon} {$pathCount} path(s), {$classesFound} classes found");
         }
 
@@ -298,18 +304,18 @@ class VerifyNamespacesCommand extends Command
     private function verifyNamespacePath(string $path, bool $isDetailed): array
     {
         $result = [
-            'valid' => false,
-            'exists' => false,
-            'readable' => false,
+            'valid'         => false,
+            'exists'        => false,
+            'readable'      => false,
             'classes_found' => 0,
         ];
 
-        $result['exists'] = is_dir($path);
+        $result['exists']   = is_dir($path);
         $result['readable'] = $result['exists'] && is_readable($path);
 
         if ($result['readable']) {
             $result['classes_found'] = $this->countPhpFiles($path);
-            $result['valid'] = true;
+            $result['valid']         = true;
         }
 
         return $result;
@@ -368,7 +374,7 @@ class VerifyNamespacesCommand extends Command
 
             // Verify paths are absolute and exist
             foreach ($paths as $path) {
-                if (!is_dir($path)) {
+                if (! is_dir($path)) {
                     return false;
                 }
             }
@@ -393,7 +399,7 @@ class VerifyNamespacesCommand extends Command
     private function filterModuleNamespaces(array $psr4Prefixes): array
     {
         $moduleNamespaces = [];
-        $modulesPath = base_path($this->configuration->getDefaultModulesDirectory());
+        $modulesPath      = base_path($this->configuration->getDefaultModulesDirectory());
 
         foreach ($psr4Prefixes as $namespace => $paths) {
             $isModuleNamespace = false;
@@ -404,7 +410,7 @@ class VerifyNamespacesCommand extends Command
             }
 
             // Check if any path is within the modules directory
-            if (!$isModuleNamespace) {
+            if (! $isModuleNamespace) {
                 foreach ($paths as $path) {
                     if (str_starts_with($path, $modulesPath)) {
                         $isModuleNamespace = true;
@@ -414,7 +420,7 @@ class VerifyNamespacesCommand extends Command
             }
 
             // Also check for other common module patterns
-            if (!$isModuleNamespace) {
+            if (! $isModuleNamespace) {
                 $modulePatterns = [
                     'Modules\\',
                     'Module\\',

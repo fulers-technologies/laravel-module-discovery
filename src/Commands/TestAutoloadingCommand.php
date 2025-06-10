@@ -1,11 +1,12 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * TestAutoloadingCommand tests actual class autoloading functionality.
@@ -15,6 +16,11 @@ use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
  * The command provides real-world testing of autoloading functionality
  * by attempting to instantiate or reference actual classes.
  */
+#[AsCommand(
+    name: 'module:test-autoloading',
+    description: 'Test actual autoloading of classes from discovered namespaces',
+    aliases: ['test:autoloading', 'autoloading:test']
+)]
 class TestAutoloadingCommand extends Command
 {
     /**
@@ -60,7 +66,7 @@ class TestAutoloadingCommand extends Command
 
         try {
             $specificNamespace = $this->option('namespace');
-            $specificClass = $this->option('class');
+            $specificClass     = $this->option('class');
 
             if ($specificClass) {
                 return $this->testSpecificClass($specificClass);
@@ -122,15 +128,15 @@ class TestAutoloadingCommand extends Command
         $this->info("🎯 Testing namespace: {$namespace}");
         $this->line('');
 
-        $classLoader = $this->composerLoader->getClassLoader();
-        $psr4Prefixes = $classLoader->getPrefixesPsr4();
+        $classLoader         = $this->composerLoader->getClassLoader();
+        $psr4Prefixes        = $classLoader->getPrefixesPsr4();
         $normalizedNamespace = rtrim($namespace, '\\') . '\\';
 
-        if (!isset($psr4Prefixes[$normalizedNamespace])) {
+        if (! isset($psr4Prefixes[$normalizedNamespace])) {
             $this->error("❌ Namespace '{$namespace}' is not registered in PSR-4 autoloader");
 
             // Check if it's in the class map instead
-            $classMap = $classLoader->getClassMap();
+            $classMap        = $classLoader->getClassMap();
             $foundInClassMap = [];
 
             foreach ($classMap as $className => $filePath) {
@@ -139,7 +145,7 @@ class TestAutoloadingCommand extends Command
                 }
             }
 
-            if (!empty($foundInClassMap)) {
+            if (! empty($foundInClassMap)) {
                 $this->warn("⚠️  However, found " . count($foundInClassMap) . " classes in class map:");
                 foreach ($foundInClassMap as $className) {
                     $this->line("  - {$className}");
@@ -153,7 +159,7 @@ class TestAutoloadingCommand extends Command
             return 1;
         }
 
-        $paths = $psr4Prefixes[$normalizedNamespace];
+        $paths   = $psr4Prefixes[$normalizedNamespace];
         $classes = $this->discoverClassesInPaths($paths, $namespace);
 
         if (empty($classes)) {
@@ -177,10 +183,10 @@ class TestAutoloadingCommand extends Command
         $this->info("🎯 Testing all module classes");
         $this->line('');
 
-        $classLoader = $this->composerLoader->getClassLoader();
+        $classLoader  = $this->composerLoader->getClassLoader();
         $psr4Prefixes = $classLoader->getPrefixesPsr4();
 
-        $moduleClasses = [];
+        $moduleClasses    = [];
         $moduleNamespaces = $this->findModuleNamespaces($psr4Prefixes);
 
         $this->info("Found " . count($moduleNamespaces) . " module namespaces:");
@@ -191,8 +197,8 @@ class TestAutoloadingCommand extends Command
 
         // Discover classes from module namespaces
         foreach ($moduleNamespaces as $namespace) {
-            $paths = $psr4Prefixes[$namespace];
-            $classes = $this->discoverClassesInPaths($paths, rtrim($namespace, '\\'));
+            $paths         = $psr4Prefixes[$namespace];
+            $classes       = $this->discoverClassesInPaths($paths, rtrim($namespace, '\\'));
             $moduleClasses = array_merge($moduleClasses, $classes);
         }
 
@@ -212,7 +218,7 @@ class TestAutoloadingCommand extends Command
             $this->info("🔍 Looking for module classes in class map...");
             $moduleClasses = $this->findModuleClassesInClassMap();
 
-            if (!empty($moduleClasses)) {
+            if (! empty($moduleClasses)) {
                 $this->info("Found " . count($moduleClasses) . " module classes in class map:");
                 foreach ($moduleClasses as $className) {
                     $this->line("  - {$className}");
@@ -239,8 +245,8 @@ class TestAutoloadingCommand extends Command
      */
     private function findModuleClassesInClassMap(): array
     {
-        $classLoader = $this->composerLoader->getClassLoader();
-        $classMap = $classLoader->getClassMap();
+        $classLoader   = $this->composerLoader->getClassLoader();
+        $classMap      = $classLoader->getClassMap();
         $moduleClasses = [];
 
         foreach ($classMap as $className => $filePath) {
@@ -267,7 +273,7 @@ class TestAutoloadingCommand extends Command
     private function findModuleNamespaces(array $psr4Prefixes): array
     {
         $moduleNamespaces = [];
-        $modulesPath = base_path('app/Modules');
+        $modulesPath      = base_path('app/Modules');
 
         foreach ($psr4Prefixes as $namespace => $paths) {
             $isModuleNamespace = false;
@@ -278,7 +284,7 @@ class TestAutoloadingCommand extends Command
             }
 
             // Check if any path is within the modules directory
-            if (!$isModuleNamespace) {
+            if (! $isModuleNamespace) {
                 foreach ($paths as $path) {
                     if (str_starts_with($path, $modulesPath)) {
                         $isModuleNamespace = true;
@@ -288,7 +294,7 @@ class TestAutoloadingCommand extends Command
             }
 
             // Also check for other common module patterns
-            if (!$isModuleNamespace) {
+            if (! $isModuleNamespace) {
                 $modulePatterns = [
                     'Modules\\',
                     'Module\\',
@@ -327,10 +333,10 @@ class TestAutoloadingCommand extends Command
     {
         $successCount = 0;
         $failureCount = 0;
-        $results = [];
+        $results      = [];
 
         foreach ($classes as $className) {
-            $result = $this->testClassAutoloading($className);
+            $result              = $this->testClassAutoloading($className);
             $results[$className] = $result;
 
             if ($result['success']) {
@@ -366,10 +372,10 @@ class TestAutoloadingCommand extends Command
     {
         try {
             // Test if class exists (this triggers autoloading)
-            if (!class_exists($className) && !interface_exists($className) && !trait_exists($className)) {
+            if (! class_exists($className) && ! interface_exists($className) && ! trait_exists($className)) {
                 return [
                     'success' => false,
-                    'error' => 'Class/Interface/Trait does not exist or could not be autoloaded',
+                    'error'   => 'Class/Interface/Trait does not exist or could not be autoloaded',
                 ];
             }
 
@@ -377,28 +383,28 @@ class TestAutoloadingCommand extends Command
             $reflection = new \ReflectionClass($className);
 
             return [
-                'success' => true,
-                'type' => $this->getClassType($reflection),
-                'file' => $reflection->getFileName(),
-                'namespace' => $reflection->getNamespaceName(),
-                'methods' => count($reflection->getMethods()),
-                'properties' => count($reflection->getProperties()),
+                'success'     => true,
+                'type'        => $this->getClassType($reflection),
+                'file'        => $reflection->getFileName(),
+                'namespace'   => $reflection->getNamespaceName(),
+                'methods'     => count($reflection->getMethods()),
+                'properties'  => count($reflection->getProperties()),
                 'is_abstract' => $reflection->isAbstract(),
-                'is_final' => $reflection->isFinal(),
-                'parent' => $reflection->getParentClass() ? $reflection->getParentClass()->getName() : null,
-                'interfaces' => array_keys($reflection->getInterfaces()),
-                'traits' => array_keys($reflection->getTraits()),
+                'is_final'    => $reflection->isFinal(),
+                'parent'      => $reflection->getParentClass() ? $reflection->getParentClass()->getName() : null,
+                'interfaces'  => array_keys($reflection->getInterfaces()),
+                'traits'      => array_keys($reflection->getTraits()),
             ];
 
         } catch (\ReflectionException $e) {
             return [
                 'success' => false,
-                'error' => 'Reflection failed: ' . $e->getMessage(),
+                'error'   => 'Reflection failed: ' . $e->getMessage(),
             ];
         } catch (\Throwable $e) {
             return [
                 'success' => false,
-                'error' => 'Autoloading failed: ' . $e->getMessage(),
+                'error'   => 'Autoloading failed: ' . $e->getMessage(),
             ];
         }
     }
@@ -420,7 +426,7 @@ class TestAutoloadingCommand extends Command
         $classes = [];
 
         foreach ($paths as $path) {
-            if (!is_dir($path)) {
+            if (! is_dir($path)) {
                 continue;
             }
 
@@ -510,11 +516,11 @@ class TestAutoloadingCommand extends Command
             $this->line("   Parent: " . $classInfo['parent']);
         }
 
-        if (!empty($classInfo['interfaces'])) {
+        if (! empty($classInfo['interfaces'])) {
             $this->line("   Interfaces: " . implode(', ', $classInfo['interfaces']));
         }
 
-        if (!empty($classInfo['traits'])) {
+        if (! empty($classInfo['traits'])) {
             $this->line("   Traits: " . implode(', ', $classInfo['traits']));
         }
     }

@@ -6,12 +6,18 @@ namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * DumpComposerInfoCommand dumps detailed Composer autoloader information.
  * This command provides a comprehensive view of what's registered in
  * Composer's autoloader for debugging and verification purposes.
  */
+#[AsCommand(
+    name: 'module:dump-composer',
+    description: 'Dump detailed Composer autoloader information for debugging',
+    aliases: ['dump:composer', 'composer:dump-info']
+)]
 class DumpComposerInfoCommand extends Command
 {
     /**

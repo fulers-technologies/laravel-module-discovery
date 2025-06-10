@@ -1,16 +1,19 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
-use LaravelModuleDiscovery\ComposerHook\Enums\DiscoveryStatusEnum;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\DirectoryNotFoundException;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\ModuleDiscoveryException;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * ModuleDiscoverCommand handles the Artisan command for automatic module discovery.
@@ -20,6 +23,11 @@ use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
  * The command is designed to be triggered by Composer hooks during install,
  * update, and autoload dump operations to maintain current autoloader registrations.
  */
+#[AsCommand(
+    name: 'module:discover',
+    description: 'Discover and register module namespaces for Composer autoloading',
+    aliases: ['modules:discover', 'discover:modules']
+)]
 class ModuleDiscoverCommand extends Command
 {
     /**
@@ -27,7 +35,11 @@ class ModuleDiscoverCommand extends Command
      * Defines the command signature including the command name
      * and any optional parameters or flags.
      */
-    protected $signature = 'module:discover {--path= : Custom path to scan for modules} {--dry-run : Run discovery without registering namespaces} {--update-composer : Update composer.json with discovered namespaces}';
+    protected $signature = 'module:discover
+                            {--path= : Custom path to scan for modules}
+                            {--dry-run : Run discovery without registering namespaces}
+                            {--update-composer : Update composer.json with discovered namespaces}
+                            {--clear-cache : Clear discovery cache before scanning}';
 
     /**
      * The console command description.
@@ -67,9 +79,10 @@ class ModuleDiscoverCommand extends Command
         $this->info('🔍 Starting module discovery process...');
 
         try {
-            $modulesPath = $this->getModulesPath();
-            $isDryRun = $this->option('dry-run') || $this->configuration->isDryRunModeEnabled();
+            $modulesPath    = $this->getModulesPath();
+            $isDryRun       = $this->option('dry-run') || $this->configuration->isDryRunModeEnabled();
             $updateComposer = $this->option('update-composer');
+            $clearCache     = $this->option('clear-cache');
 
             if ($this->isVerbose()) {
                 $this->line("📁 Scanning directory: {$modulesPath}");
@@ -79,6 +92,14 @@ class ModuleDiscoverCommand extends Command
                 if ($updateComposer) {
                     $this->line("📝 Will update composer.json with discovered namespaces");
                 }
+                if ($clearCache) {
+                    $this->line("🧹 Will clear discovery cache before scanning");
+                }
+            }
+
+            // Clear cache if requested
+            if ($clearCache) {
+                $this->clearDiscoveryCache();
             }
 
             // Discover classes and namespaces
@@ -103,15 +124,15 @@ class ModuleDiscoverCommand extends Command
 
             // Register namespaces with Composer (unless dry run)
             $registrationResults = [];
-            $applicationSuccess = true;
+            $applicationSuccess  = true;
 
-            if (!$isDryRun && $this->configuration->isAutoRegisterNamespacesEnabled()) {
+            if (! $isDryRun && $this->configuration->isAutoRegisterNamespacesEnabled()) {
                 $this->info('🔧 Registering namespaces with Composer autoloader...');
 
                 $registrationResults = $this->composerLoader->registerMultipleNamespaces($discoveredClasses);
-                $applicationSuccess = $this->configuration->isAutoApplyRegistrationsEnabled()
-                    ? $this->composerLoader->applyRegistrations()
-                    : true;
+                $applicationSuccess  = $this->configuration->isAutoApplyRegistrationsEnabled()
+                ? $this->composerLoader->applyRegistrations()
+                : true;
 
                 // Show registration results
                 $successCount = count(array_filter($registrationResults));
@@ -148,7 +169,7 @@ class ModuleDiscoverCommand extends Command
         } catch (DirectoryNotFoundException $e) {
             $this->error("❌ " . $e->getMessage());
 
-            if (!empty($e->getSuggestions())) {
+            if (! empty($e->getSuggestions())) {
                 $this->line('');
                 $this->line('💡 Suggested directories:');
                 foreach ($e->getSuggestions() as $suggestion) {
@@ -159,7 +180,7 @@ class ModuleDiscoverCommand extends Command
             return 1;
 
         } catch (ModuleDiscoveryException $e) {
-            $this->error("❌ Module discovery failed: {$e->getMessage()}");
+            $this->error("❌ Module discovery failed: " . $e->getMessage());
 
             if ($this->isVerbose() && $e->getFailedPath()) {
                 $this->line("📁 Failed path: {$e->getFailedPath()}");
@@ -168,7 +189,7 @@ class ModuleDiscoverCommand extends Command
             return 1;
 
         } catch (\Exception $e) {
-            $this->error("💥 Unexpected error during module discovery: {$e->getMessage()}");
+            $this->error("💥 Unexpected error during module discovery: " . $e->getMessage());
 
             if ($this->isVerbose() || $this->configuration->isDebugModeEnabled()) {
                 $this->line('');
@@ -194,8 +215,8 @@ class ModuleDiscoverCommand extends Command
 
         if ($customPath !== null) {
             return $this->isAbsolutePath($customPath)
-                ? $customPath
-                : base_path($customPath);
+            ? $customPath
+            : base_path($customPath);
         }
 
         $configuredPath = $this->configuration->getDefaultModulesDirectory();
@@ -213,6 +234,33 @@ class ModuleDiscoverCommand extends Command
     private function isVerbose(): bool
     {
         return $this->getOutput()->isVerbose() || $this->configuration->isDebugModeEnabled();
+    }
+
+    /**
+     * Clears the discovery cache.
+     * Removes cached discovery results to ensure fresh scanning
+     * when the clear-cache option is used.
+     */
+    private function clearDiscoveryCache(): void
+    {
+        $this->info('🧹 Clearing discovery cache...');
+
+        try {
+            // Clear Laravel cache
+            Cache::forget('module_discovery_results');
+            Cache::forget('namespace_extraction_cache');
+
+            // Clear file-based cache if it exists
+            $cacheDir = storage_path('framework/cache/module-discovery');
+            if (File::exists($cacheDir)) {
+                File::deleteDirectory($cacheDir);
+            }
+
+            $this->info('✅ Discovery cache cleared successfully');
+
+        } catch (\Exception $e) {
+            $this->warn("⚠️  Failed to clear cache: " . $e->getMessage());
+        }
     }
 
     /**
@@ -234,7 +282,7 @@ class ModuleDiscoverCommand extends Command
         $this->line($isDryRun ? '🧪 Discovered namespaces (would be registered):' : '📝 Registration results:');
 
         foreach ($discoveredClasses as $namespace => $path) {
-            $status = $registrationResults[$namespace] ?? false;
+            $status     = $registrationResults[$namespace] ?? false;
             $statusText = $status ? '<info>✅</info>' : '<error>❌</error>';
 
             if ($isDryRun) {
@@ -255,7 +303,7 @@ class ModuleDiscoverCommand extends Command
      */
     private function displayDiscoveryStatistics(): void
     {
-        if (!$this->isVerbose()) {
+        if (! $this->isVerbose()) {
             return;
         }
 
@@ -266,14 +314,15 @@ class ModuleDiscoverCommand extends Command
 
             $this->line('');
             $this->line('📊 Discovery Statistics:');
-            $this->line("  📄 Processed files: " . ($stats['processed_files'] ?? 0));
-            $this->line("  ⏱️  Processing time: " . round($stats['processing_time'] ?? 0, 3) . 's');
-            $this->line("  🎯 Namespaces found: " . ($stats['discovered_namespaces'] ?? 0));
+            $this->line("  📄 Processed files: " . Arr::get($stats, 'processed_files', 0));
+            $this->line("  ⏱️  Processing time: " . round(Arr::get($stats, 'processing_time', 0), 3) . 's');
+            $this->line("  🎯 Namespaces found: " . Arr::get($stats, 'discovered_namespaces', 0));
 
-            if (!empty($stats['error_files'])) {
-                $this->line("  ❌ Files with errors: " . count($stats['error_files']));
+            $errorFiles = Arr::get($stats, 'error_files', []);
+            if (! empty($errorFiles)) {
+                $this->line("  ❌ Files with errors: " . count($errorFiles));
 
-                foreach ($stats['error_files'] as $errorFile) {
+                foreach ($errorFiles as $errorFile) {
                     $this->line("    • {$errorFile['file']}: {$errorFile['error']}");
                 }
             }
@@ -289,7 +338,7 @@ class ModuleDiscoverCommand extends Command
     {
         $suggestions = $this->configuration->getSuggestedDirectories();
 
-        if (!empty($suggestions)) {
+        if (! empty($suggestions)) {
             $this->line('');
             $this->line('💡 Suggested module directories to create:');
             foreach ($suggestions as $suggestion) {
@@ -318,7 +367,7 @@ class ModuleDiscoverCommand extends Command
         }
 
         // Check if all registrations succeeded
-        $allSuccessful = !in_array(false, $registrationResults, true);
+        $allSuccessful = ! in_array(false, $registrationResults, true);
 
         return ($allSuccessful && $applicationSuccess) ? 0 : 1;
     }

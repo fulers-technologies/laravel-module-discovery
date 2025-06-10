@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Services;
 
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Arr;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 
 /**
  * ConfigurationService implements configuration management for the module discovery system.
  * This service handles loading, accessing, and validating configuration values
- * from the module-discovery.php configuration file and environment variables.
+ * from the module-discovery.php and attribute-discovery.php configuration files.
  *
  * The service provides a centralized way to access all package configuration
  * and ensures consistent configuration handling throughout the system.
@@ -18,7 +20,7 @@ class ConfigurationService implements ConfigurationInterface
 {
     /**
      * The loaded configuration array.
-     * Contains all configuration values loaded from the configuration file
+     * Contains all configuration values loaded from the configuration files
      * and processed for use throughout the system.
      *
      * @var array<string, mixed>
@@ -26,11 +28,16 @@ class ConfigurationService implements ConfigurationInterface
     private array $config;
 
     /**
-     * The configuration file name.
-     * Specifies the name of the configuration file to load
-     * from Laravel's config directory.
+     * The module discovery configuration file name.
+     * Specifies the name of the module discovery configuration file.
      */
-    private const CONFIG_FILE = 'module-discovery';
+    private const MODULE_CONFIG_FILE = 'module-discovery';
+
+    /**
+     * The attribute discovery configuration file name.
+     * Specifies the name of the attribute discovery configuration file.
+     */
+    private const ATTRIBUTE_CONFIG_FILE = 'attribute-discovery';
 
     /**
      * Creates a new ConfigurationService instance.
@@ -74,7 +81,7 @@ class ConfigurationService implements ConfigurationInterface
      */
     public function get(string $key, mixed $default = null): mixed
     {
-        return $this->getNestedValue($this->config, $key, $default);
+        return Arr::get($this->config, $key, $default);
     }
 
     /**
@@ -90,7 +97,7 @@ class ConfigurationService implements ConfigurationInterface
      */
     public function has(string $key): bool
     {
-        return $this->getNestedValue($this->config, $key, '__NOT_FOUND__') !== '__NOT_FOUND__';
+        return Arr::has($this->config, $key);
     }
 
     /**
@@ -474,55 +481,100 @@ class ConfigurationService implements ConfigurationInterface
 
     /**
      * Loads configuration from the Laravel configuration system.
-     * Retrieves the module-discovery configuration array from Laravel's config.
+     * Retrieves both module-discovery and attribute-discovery configurations
+     * and merges them into a single configuration array.
      *
      * Returns:
      *   - array<string, mixed>: The loaded configuration array.
      */
     private function loadConfiguration(): array
     {
-        // Try to load from Laravel config system
+        $config = [];
+
+        // Load module discovery configuration
         if (function_exists('config')) {
-            $config = config(self::CONFIG_FILE);
-            if (is_array($config)) {
-                return $config;
+            $moduleConfig = Config::get(self::MODULE_CONFIG_FILE);
+            if (is_array($moduleConfig)) {
+                $config = array_merge($config, $moduleConfig);
+            }
+
+            // Load attribute discovery configuration
+            $attributeConfig = Config::get(self::ATTRIBUTE_CONFIG_FILE);
+            if (is_array($attributeConfig)) {
+                $config[self::ATTRIBUTE_CONFIG_FILE] = $attributeConfig;
             }
         }
 
-        // Fallback to loading directly from file
-        $configPath = $this->getConfigFilePath();
-        if (file_exists($configPath)) {
-            $config = require $configPath;
-            if (is_array($config)) {
-                return $config;
-            }
+        // Fallback to loading directly from files if Laravel config is not available
+        if (empty($config)) {
+            $config = $this->loadConfigurationFromFiles();
         }
 
-        // Return default configuration if file not found
-        return $this->getDefaultConfiguration();
+        return $config;
     }
 
     /**
-     * Gets the path to the configuration file.
-     * Returns the full path to the module-discovery.php configuration file.
+     * Loads configuration directly from files.
+     * Fallback method to load configuration when Laravel's config system
+     * is not available.
+     *
+     * Returns:
+     *   - array<string, mixed>: The loaded configuration array.
+     */
+    private function loadConfigurationFromFiles(): array
+    {
+        $config = [];
+
+        // Try to load module discovery config
+        $moduleConfigPath = $this->getConfigFilePath(self::MODULE_CONFIG_FILE);
+        if (file_exists($moduleConfigPath)) {
+            $moduleConfig = require $moduleConfigPath;
+            if (is_array($moduleConfig)) {
+                $config = array_merge($config, $moduleConfig);
+            }
+        }
+
+        // Try to load attribute discovery config
+        $attributeConfigPath = $this->getConfigFilePath(self::ATTRIBUTE_CONFIG_FILE);
+        if (file_exists($attributeConfigPath)) {
+            $attributeConfig = require $attributeConfigPath;
+            if (is_array($attributeConfig)) {
+                $config[self::ATTRIBUTE_CONFIG_FILE] = $attributeConfig;
+            }
+        }
+
+        // Return default configuration if files not found
+        if (empty($config)) {
+            $config = $this->getDefaultConfiguration();
+        }
+
+        return $config;
+    }
+
+    /**
+     * Gets the path to a configuration file.
+     * Returns the full path to the specified configuration file.
+     *
+     * Parameters:
+     *   - string $configName: The configuration file name.
      *
      * Returns:
      *   - string: The configuration file path.
      */
-    private function getConfigFilePath(): string
+    private function getConfigFilePath(string $configName): string
     {
         // Try Laravel config path first
         if (function_exists('config_path')) {
-            return config_path(self::CONFIG_FILE . '.php');
+            return config_path($configName . '.php');
         }
 
         // Fallback to package config directory
-        return __DIR__ . '/../../config/' . self::CONFIG_FILE . '.php';
+        return __DIR__ . '/../../config/' . $configName . '.php';
     }
 
     /**
      * Gets the default configuration array.
-     * Returns a minimal default configuration when the config file is not available.
+     * Returns a minimal default configuration when config files are not available.
      *
      * Returns:
      *   - array<string, mixed>: The default configuration array.
@@ -580,36 +632,5 @@ class ConfigurationService implements ConfigurationInterface
                 'packages',
             ],
         ];
-    }
-
-    /**
-     * Retrieves a nested value from an array using dot notation.
-     * Supports accessing nested array values using dot-separated keys.
-     *
-     * Parameters:
-     *   - array<string, mixed> $array: The array to search in.
-     *   - string $key: The dot-notation key path.
-     *   - mixed $default: The default value if key is not found.
-     *
-     * Returns:
-     *   - mixed: The found value or default value.
-     */
-    private function getNestedValue(array $array, string $key, mixed $default = null): mixed
-    {
-        if (isset($array[$key])) {
-            return $array[$key];
-        }
-
-        $keys = explode('.', $key);
-        $current = $array;
-
-        foreach ($keys as $segment) {
-            if (!is_array($current) || !array_key_exists($segment, $current)) {
-                return $default;
-            }
-            $current = $current[$segment];
-        }
-
-        return $current;
     }
 }
