@@ -3,7 +3,13 @@
     "description": "Laravel Composer Hook for Automatic Class Discovery",
     "type": "library",
     "license": "MIT",
-    "keywords": ["laravel", "composer", "autoload", "discovery", "modules"],
+    "keywords": [
+        "laravel",
+        "composer",
+        "autoload",
+        "discovery",
+        "modules"
+    ],
     "authors": [
         {
             "name": "Module Discovery Team",
@@ -12,8 +18,8 @@
     ],
     "require": {
         "php": "^8.1",
-        "illuminate/console": "^10.0|^11.0",
-        "illuminate/support": "^10.0|^11.0",
+        "illuminate/console": "^12.0",
+        "illuminate/support": "^12.0",
         "composer/composer": "^2.0"
     },
     "require-dev": {
