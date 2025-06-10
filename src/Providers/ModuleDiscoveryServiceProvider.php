@@ -8,10 +8,12 @@ use Illuminate\Support\ServiceProvider;
 use LaravelModuleDiscovery\ComposerHook\Commands\ModuleDiscoverCommand;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\NamespaceExtractorInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\PathResolverInterface;
 use LaravelModuleDiscovery\ComposerHook\Services\ClassDiscoveryService;
 use LaravelModuleDiscovery\ComposerHook\Services\ComposerLoaderService;
+use LaravelModuleDiscovery\ComposerHook\Services\ConfigurationService;
 use LaravelModuleDiscovery\ComposerHook\Services\NamespaceExtractorService;
 use LaravelModuleDiscovery\ComposerHook\Services\PathResolverService;
 
@@ -61,9 +63,16 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
      */
     private function registerCoreServices(): void
     {
+        // Register ConfigurationInterface first as other services depend on it
+        $this->app->singleton(ConfigurationInterface::class, function () {
+            return ConfigurationService::make();
+        });
+
         // Register NamespaceExtractorInterface
-        $this->app->singleton(NamespaceExtractorInterface::class, function () {
-            return NamespaceExtractorService::make();
+        $this->app->singleton(NamespaceExtractorInterface::class, function ($app) {
+            return NamespaceExtractorService::make(
+                $app->make(ConfigurationInterface::class)
+            );
         });
 
         // Register PathResolverInterface
@@ -80,7 +89,8 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
         $this->app->singleton(ClassDiscoveryInterface::class, function ($app) {
             return ClassDiscoveryService::make(
                 $app->make(NamespaceExtractorInterface::class),
-                $app->make(PathResolverInterface::class)
+                $app->make(PathResolverInterface::class),
+                $app->make(ConfigurationInterface::class)
             );
         });
     }
@@ -95,7 +105,8 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
         $this->app->singleton(ModuleDiscoverCommand::class, function ($app) {
             return new ModuleDiscoverCommand(
                 $app->make(ClassDiscoveryInterface::class),
-                $app->make(ComposerLoaderInterface::class)
+                $app->make(ComposerLoaderInterface::class),
+                $app->make(ConfigurationInterface::class)
             );
         });
     }
@@ -107,10 +118,14 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
      */
     private function publishConfiguration(): void
     {
-        // If we had configuration files, we would publish them here
-        // $this->publishes([
-        //     __DIR__ . '/../../config/module-discovery.php' => config_path('module-discovery.php'),
-        // ], 'config');
+        $this->publishes([
+            __DIR__ . '/../../config/module-discovery.php' => config_path('module-discovery.php'),
+        ], 'config');
+
+        $this->mergeConfigFrom(
+            __DIR__ . '/../../config/module-discovery.php',
+            'module-discovery'
+        );
     }
 
     /**
@@ -142,6 +157,7 @@ class ModuleDiscoveryServiceProvider extends ServiceProvider
             NamespaceExtractorInterface::class,
             PathResolverInterface::class,
             ComposerLoaderInterface::class,
+            ConfigurationInterface::class,
             ModuleDiscoverCommand::class,
         ];
     }

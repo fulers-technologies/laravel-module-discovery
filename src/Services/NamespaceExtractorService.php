@@ -1,11 +1,12 @@
 <?php
 
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Services;
 
 use LaravelModuleDiscovery\ComposerHook\Constants\TokenConstants;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\NamespaceExtractionException;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\NamespaceExtractorInterface;
 
 /**
@@ -28,15 +29,33 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
     private array $namespaceCache = [];
 
     /**
+     * Creates a new NamespaceExtractorService instance.
+     * Initializes the service with configuration management for
+     * controlling extraction behavior and performance settings.
+     *
+     * Parameters:
+     *   - ConfigurationInterface $configuration: Service for accessing configuration values.
+     */
+    public function __construct(
+        private readonly ConfigurationInterface $configuration
+    ) {
+    }
+
+    /**
      * Creates a new NamespaceExtractorService instance using static factory method.
      * Provides a convenient way to instantiate the service without using the new keyword.
+     *
+     * Parameters:
+     *   - ConfigurationInterface|null $configuration: Optional custom configuration service.
      *
      * Returns:
      *   - static: A new NamespaceExtractorService instance.
      */
-    public static function make(): static
+    public static function make(?ConfigurationInterface $configuration = null): static
     {
-        return new static();
+        return new static(
+            $configuration ?? ConfigurationService::make()
+        );
     }
 
     /**
@@ -54,43 +73,47 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
      */
     public function extractNamespace(string $filePath): ?string
     {
-        // Check cache first to avoid re-parsing
-        if (isset($this->namespaceCache[$filePath])) {
+        // Check cache first to avoid re-parsing (if caching is enabled)
+        if ($this->configuration->isCachingEnabled() && isset($this->namespaceCache[$filePath])) {
             return $this->namespaceCache[$filePath];
         }
 
-        if (!is_file($filePath) || !is_readable($filePath)) {
+        if (! is_file($filePath) || ! is_readable($filePath)) {
             throw NamespaceExtractionException::fileNotReadable($filePath, 'File does not exist or is not readable');
         }
 
         try {
             $fileContent = file_get_contents($filePath);
-            
+
             if ($fileContent === false) {
                 throw NamespaceExtractionException::fileNotReadable($filePath, 'Failed to read file contents');
             }
 
             // Quick check for PHP opening tag
-            if (!preg_match(TokenConstants::PHP_OPEN_TAG_PATTERN, $fileContent)) {
-                $this->namespaceCache[$filePath] = null;
-                return null;
+            if (! preg_match(TokenConstants::PHP_OPEN_TAG_PATTERN, $fileContent)) {
+                $namespace = null;
+            } else {
+                $tokens    = token_get_all($fileContent);
+                $namespace = $this->parseTokensForNamespace($tokens);
+
+                if ($namespace !== null && ! $this->validateNamespace($namespace)) {
+                    throw NamespaceExtractionException::invalidNamespaceFormat($namespace, $filePath);
+                }
             }
 
-            $tokens = token_get_all($fileContent);
-            $namespace = $this->parseTokensForNamespace($tokens);
-
-            if ($namespace !== null && !$this->validateNamespace($namespace)) {
-                throw NamespaceExtractionException::invalidNamespaceFormat($namespace, $filePath);
+            // Cache the result if caching is enabled
+            if ($this->configuration->isCachingEnabled()) {
+                $this->manageCacheSize();
+                $this->namespaceCache[$filePath] = $namespace;
             }
 
-            $this->namespaceCache[$filePath] = $namespace;
             return $namespace;
 
         } catch (\Exception $e) {
             if ($e instanceof NamespaceExtractionException) {
                 throw $e;
             }
-            
+
             throw NamespaceExtractionException::tokenParsingFailed($filePath, [], $e->getMessage());
         }
     }
@@ -108,11 +131,11 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
      */
     public function parseTokensForNamespace(array $tokens): ?string
     {
-        $tokenCount = count($tokens);
-        $maxTokensToCheck = min($tokenCount, TokenConstants::MAX_TOKENS_TO_EXAMINE);
+        $tokenCount       = count($tokens);
+        $maxTokensToCheck = min($tokenCount, $this->configuration->getMaxTokensToExamine());
 
         for ($i = 0; $i < $maxTokensToCheck; $i++) {
-            if (!is_array($tokens[$i]) || $tokens[$i][0] !== TokenConstants::NAMESPACE_TOKEN) {
+            if (! is_array($tokens[$i]) || $tokens[$i][0] !== TokenConstants::NAMESPACE_TOKEN) {
                 continue;
             }
 
@@ -140,9 +163,17 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
             return false;
         }
 
+        // Check length requirements from configuration
+        $minLength = $this->configuration->getMinNamespaceLength();
+        $maxLength = $this->configuration->getMaxNamespaceLength();
+
+        if (strlen($namespace) < $minLength || strlen($namespace) > $maxLength) {
+            return false;
+        }
+
         // Check for valid PHP namespace pattern
         $pattern = '/^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*(?:\\\\[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)*$/';
-        
+
         return preg_match($pattern, $namespace) === 1;
     }
 
@@ -160,8 +191,8 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
      */
     private function extractNamespaceFromTokenPosition(array $tokens, int $startPosition): ?string
     {
-        $namespace = '';
-        $i = $startPosition + 1;
+        $namespace  = '';
+        $i          = $startPosition + 1;
         $tokenCount = count($tokens);
 
         // Skip whitespace after namespace keyword
@@ -192,6 +223,21 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
     }
 
     /**
+     * Manages cache size to prevent memory issues.
+     * Clears the cache when it exceeds the configured size limit
+     * to maintain reasonable memory usage during discovery operations.
+     */
+    private function manageCacheSize(): void
+    {
+        $cacheLimit = $this->configuration->get('performance.cache_size_limit', 1000);
+
+        if (count($this->namespaceCache) >= $cacheLimit) {
+            // Remove oldest entries (simple FIFO approach)
+            $this->namespaceCache = array_slice($this->namespaceCache, -($cacheLimit / 2), null, true);
+        }
+    }
+
+    /**
      * Clears the namespace cache to free memory.
      * Removes all cached namespace extraction results to prevent
      * memory buildup during large discovery operations.
@@ -212,8 +258,10 @@ class NamespaceExtractorService implements NamespaceExtractorInterface
     public function getCacheStats(): array
     {
         return [
-            'cache_size' => count($this->namespaceCache),
-            'cached_files' => array_keys($this->namespaceCache),
+            'cache_size'    => count($this->namespaceCache),
+            'cached_files'  => array_keys($this->namespaceCache),
+            'cache_enabled' => $this->configuration->isCachingEnabled(),
+            'cache_limit'   => $this->configuration->get('performance.cache_size_limit', 1000),
         ];
     }
 }

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace LaravelModuleDiscovery\ComposerHook\Services;
 
-use LaravelModuleDiscovery\ComposerHook\Constants\DirectoryConstants;
 use LaravelModuleDiscovery\ComposerHook\Enums\DiscoveryStatusEnum;
 use LaravelModuleDiscovery\ComposerHook\Enums\FileTypeEnum;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\DirectoryNotFoundException;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\ModuleDiscoveryException;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\NamespaceExtractorInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\PathResolverInterface;
 use RecursiveDirectoryIterator;
@@ -44,15 +44,17 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
     /**
      * Creates a new ClassDiscoveryService instance.
      * Initializes the service with required dependencies for namespace
-     * extraction and path resolution operations.
+     * extraction, path resolution, and configuration management.
      *
      * Parameters:
      *   - NamespaceExtractorInterface $namespaceExtractor: Service for extracting namespaces from PHP files.
      *   - PathResolverInterface $pathResolver: Service for resolving and normalizing file paths.
+     *   - ConfigurationInterface $configuration: Service for accessing configuration values.
      */
     public function __construct(
         private readonly NamespaceExtractorInterface $namespaceExtractor,
-        private readonly PathResolverInterface $pathResolver
+        private readonly PathResolverInterface $pathResolver,
+        private readonly ConfigurationInterface $configuration
     ) {
         $this->status = DiscoveryStatusEnum::INITIALIZED;
         $this->discoveryStats = [];
@@ -66,17 +68,20 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
      * Parameters:
      *   - NamespaceExtractorInterface|null $namespaceExtractor: Optional custom namespace extractor.
      *   - PathResolverInterface|null $pathResolver: Optional custom path resolver.
+     *   - ConfigurationInterface|null $configuration: Optional custom configuration service.
      *
      * Returns:
      *   - static: A new ClassDiscoveryService instance.
      */
     public static function make(
         ?NamespaceExtractorInterface $namespaceExtractor = null,
-        ?PathResolverInterface $pathResolver = null
+        ?PathResolverInterface $pathResolver = null,
+        ?ConfigurationInterface $configuration = null
     ): static {
         return new static(
             $namespaceExtractor ?? NamespaceExtractorService::make(),
-            $pathResolver ?? PathResolverService::make()
+            $pathResolver ?? PathResolverService::make(),
+            $configuration ?? ConfigurationService::make()
         );
     }
 
@@ -99,39 +104,116 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         $this->status = DiscoveryStatusEnum::IN_PROGRESS;
         $startTime = microtime(true);
         
+        // Debug: Show what directory we're scanning
+        $this->d("🔍 Starting discovery in directory: {$directoryPath}");
+        $this->d("📁 Directory exists: " . (is_dir($directoryPath) ? 'YES' : 'NO'));
+        $this->d("📖 Directory readable: " . (is_readable($directoryPath) ? 'YES' : 'NO'));
+        
         try {
             if (!$this->validateDirectory($directoryPath)) {
-                throw DirectoryNotFoundException::modulesDirectoryMissing($directoryPath);
+                $this->d("❌ Directory validation failed for: {$directoryPath}");
+                throw DirectoryNotFoundException::modulesDirectoryMissing(
+                    $directoryPath,
+                    null,
+                    $this->configuration->getSuggestedDirectories()
+                );
             }
 
             $discoveredClasses = [];
             $processedFiles = 0;
             $errorFiles = [];
+            $maxErrors = $this->configuration->getMaxErrorsBeforeStop();
+            $continueOnErrors = $this->configuration->shouldContinueOnErrors();
+
+            $this->d("⚙️ Configuration:");
+            $this->d("   - Max errors: {$maxErrors}");
+            $this->d("   - Continue on errors: " . ($continueOnErrors ? 'YES' : 'NO'));
+            $this->d("   - Supported extensions: " . implode(', ', $this->configuration->getSupportedExtensions()));
 
             $iterator = new RecursiveDirectoryIterator(
                 $directoryPath,
                 RecursiveDirectoryIterator::SKIP_DOTS
             );
 
-            foreach (new RecursiveIteratorIterator($iterator) as $file) {
-                if (!$this->shouldProcessFile($file->getPathname())) {
+            $recursiveIterator = new RecursiveIteratorIterator(
+                $iterator,
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            // Set maximum depth if configured
+            $maxDepth = $this->configuration->getMaxScanDepth();
+            if ($maxDepth > 0) {
+                $recursiveIterator->setMaxDepth($maxDepth);
+                $this->d("📏 Max scan depth set to: {$maxDepth}");
+            }
+
+            $totalFiles = 0;
+            $skippedFiles = 0;
+            
+            foreach ($recursiveIterator as $file) {
+                $totalFiles++;
+                $filePath = $file->getPathname();
+                
+                $this->d("📄 Found file: {$filePath}");
+                
+                // Check if we should stop due to too many errors
+                if (!$continueOnErrors && count($errorFiles) >= $maxErrors) {
+                    $this->d("🛑 Stopping due to too many errors ({$maxErrors})");
+                    break;
+                }
+
+                if (!$this->shouldProcessFile($filePath)) {
+                    $skippedFiles++;
+                    $this->d("⏭️ Skipping file: {$filePath}");
+                    $this->d("   - Extension: " . pathinfo($filePath, PATHINFO_EXTENSION));
+                    $this->d("   - Is hidden: " . ($this->isHiddenFile($filePath) ? 'YES' : 'NO'));
                     continue;
                 }
 
+                $this->d("✅ Processing file: {$filePath}");
+
                 try {
-                    $namespace = $this->namespaceExtractor->extractNamespace($file->getPathname());
+                    $namespace = $this->namespaceExtractor->extractNamespace($filePath);
+                    
+                    $this->d("🔍 Extracted namespace: " . ($namespace ?? 'NULL'));
                     
                     if ($namespace !== null) {
-                        $directoryPath = $this->pathResolver->getDirectoryPath($file->getPathname());
-                        $discoveredClasses[$namespace] = $directoryPath;
+                        $shouldInclude = $this->shouldIncludeNamespace($namespace);
+                        $this->d("📋 Should include namespace '{$namespace}': " . ($shouldInclude ? 'YES' : 'NO'));
+                        
+                        if ($shouldInclude) {
+                            $directoryPath = $this->pathResolver->getDirectoryPath($filePath);
+                            $discoveredClasses[$namespace] = $directoryPath;
+                            $this->d("✅ Added namespace: {$namespace} => {$directoryPath}");
+                        }
                     }
 
                     $processedFiles++;
                 } catch (\Exception $e) {
                     $errorFiles[] = [
-                        'file' => $file->getPathname(),
+                        'file' => $filePath,
                         'error' => $e->getMessage(),
                     ];
+
+                    $this->d("❌ Error processing file {$filePath}: " . $e->getMessage());
+
+                    if (!$continueOnErrors) {
+                        throw $e;
+                    }
+                }
+            }
+
+            $this->d("📊 Discovery Summary:");
+            $this->d("   - Total files found: {$totalFiles}");
+            $this->d("   - Files processed: {$processedFiles}");
+            $this->d("   - Files skipped: {$skippedFiles}");
+            $this->d("   - Namespaces discovered: " . count($discoveredClasses));
+            $this->d("   - Error files: " . count($errorFiles));
+
+            if (!empty($discoveredClasses)) {
+                $this->d("🎯 Discovered namespaces:");
+                foreach ($discoveredClasses as $namespace => $path) {
+                    $this->d("   - {$namespace} => {$path}");
                 }
             }
 
@@ -141,6 +223,10 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
                 'processing_time' => microtime(true) - $startTime,
                 'error_files' => $errorFiles,
                 'directory_path' => $directoryPath,
+                'max_scan_depth' => $maxDepth,
+                'continue_on_errors' => $continueOnErrors,
+                'total_files_found' => $totalFiles,
+                'files_skipped' => $skippedFiles,
             ];
 
             $this->status = DiscoveryStatusEnum::COMPLETED;
@@ -150,6 +236,9 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
         } catch (\Exception $e) {
             $this->status = DiscoveryStatusEnum::FAILED;
             $this->discoveryStats['error'] = $e->getMessage();
+            $this->discoveryStats['processing_time'] = microtime(true) - $startTime;
+            
+            $this->d("💥 Discovery failed with error: " . $e->getMessage());
             
             if ($e instanceof DirectoryNotFoundException || $e instanceof ModuleDiscoveryException) {
                 throw $e;
@@ -171,7 +260,29 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
      */
     public function validateDirectory(string $directoryPath): bool
     {
-        return is_dir($directoryPath) && is_readable($directoryPath);
+        $this->d("🔍 Validating directory: {$directoryPath}");
+        
+        if (!is_dir($directoryPath) || !is_readable($directoryPath)) {
+            $this->d("❌ Directory validation failed: not a directory or not readable");
+            return false;
+        }
+
+        // Check if directory is in excluded list
+        $excludedDirectories = $this->configuration->getExcludedDirectories();
+        $directoryName = basename($directoryPath);
+        
+        $this->d("📋 Excluded directories: " . implode(', ', $excludedDirectories));
+        $this->d("📁 Current directory name: {$directoryName}");
+        
+        $isExcluded = in_array($directoryName, $excludedDirectories, true);
+        
+        if ($isExcluded) {
+            $this->d("❌ Directory is in excluded list");
+            return false;
+        }
+        
+        $this->d("✅ Directory validation passed");
+        return true;
     }
 
     /**
@@ -194,8 +305,8 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
 
     /**
      * Determines if a file should be processed during discovery.
-     * Checks the file extension and type to determine if it contains
-     * PHP classes that should be included in namespace extraction.
+     * Checks the file extension, type, and configuration settings
+     * to determine if it contains PHP classes for namespace extraction.
      *
      * Parameters:
      *   - string $filePath: The full path to the file to evaluate.
@@ -205,9 +316,119 @@ class ClassDiscoveryService implements ClassDiscoveryInterface
      */
     private function shouldProcessFile(string $filePath): bool
     {
+        // Check if hidden files should be skipped
+        if ($this->configuration->shouldSkipHiddenFiles() && $this->isHiddenFile($filePath)) {
+            return false;
+        }
+
+        // Check file extension against supported extensions
         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-        $fileType = FileTypeEnum::fromExtension($extension);
+        $supportedExtensions = $this->configuration->getSupportedExtensions();
         
+        if (!in_array($extension, $supportedExtensions, true)) {
+            return false;
+        }
+
+        // Use FileTypeEnum for additional validation
+        $fileType = FileTypeEnum::fromExtension($extension);
         return $fileType !== null && $fileType->shouldProcess();
+    }
+
+    /**
+     * Determines if a namespace should be included in the discovery results.
+     * Checks the namespace against configuration rules including excluded
+     * prefixes, length requirements, and validation settings.
+     *
+     * Parameters:
+     *   - string $namespace: The namespace to evaluate for inclusion.
+     *
+     * Returns:
+     *   - bool: True if the namespace should be included, false otherwise.
+     */
+    private function shouldIncludeNamespace(string $namespace): bool
+    {
+        // Check namespace length requirements
+        $minLength = $this->configuration->getMinNamespaceLength();
+        $maxLength = $this->configuration->getMaxNamespaceLength();
+        
+        $this->d("📏 Namespace length check for '{$namespace}':");
+        $this->d("   - Length: " . strlen($namespace));
+        $this->d("   - Min required: {$minLength}");
+        $this->d("   - Max allowed: {$maxLength}");
+        
+        if (strlen($namespace) < $minLength || strlen($namespace) > $maxLength) {
+            $this->d("❌ Namespace length validation failed");
+            return false;
+        }
+
+        // Check excluded namespace prefixes
+        $excludedPrefixes = $this->configuration->getExcludedNamespacePrefixes();
+        $this->d("🚫 Excluded prefixes: " . implode(', ', $excludedPrefixes));
+        
+        foreach ($excludedPrefixes as $prefix) {
+            if (str_starts_with($namespace, $prefix)) {
+                $this->d("❌ Namespace matches excluded prefix: {$prefix}");
+                return false;
+            }
+        }
+
+        // Perform strict PSR-4 validation if enabled
+        if ($this->configuration->isStrictPsr4ValidationEnabled()) {
+            $isValid = $this->namespaceExtractor->validateNamespace($namespace);
+            $this->d("🔍 PSR-4 validation for '{$namespace}': " . ($isValid ? 'PASSED' : 'FAILED'));
+            return $isValid;
+        }
+
+        $this->d("✅ Namespace validation passed");
+        return true;
+    }
+
+    /**
+     * Checks if a file is hidden based on its name.
+     * Determines whether a file or directory should be considered hidden
+     * based on naming conventions (starting with dot).
+     *
+     * Parameters:
+     *   - string $filePath: The file path to check.
+     *
+     * Returns:
+     *   - bool: True if the file is hidden, false otherwise.
+     */
+    private function isHiddenFile(string $filePath): bool
+    {
+        $fileName = basename($filePath);
+        return str_starts_with($fileName, '.');
+    }
+
+    /**
+     * Debug output function - prints debug information if debug mode is enabled.
+     * Provides debugging output during discovery operations to help
+     * identify issues and track the discovery process.
+     *
+     * Parameters:
+     *   - string $message: The debug message to output.
+     */
+    private function d(string $message): void
+    {
+        if ($this->configuration->isDebugModeEnabled()) {
+            echo "[DEBUG] {$message}\n";
+        }
+    }
+
+    /**
+     * Debug dump function - dumps variable and exits if debug mode is enabled.
+     * Provides detailed variable inspection during discovery operations
+     * for debugging complex issues.
+     *
+     * Parameters:
+     *   - mixed $data: The data to dump and inspect.
+     */
+    private function dd(mixed $data): void
+    {
+        if ($this->configuration->isDebugModeEnabled()) {
+            echo "[DEBUG DUMP]\n";
+            var_dump($data);
+            exit(1);
+        }
     }
 }

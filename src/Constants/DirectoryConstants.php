@@ -62,4 +62,49 @@ final class DirectoryConstants
      * to maintain reasonable performance during discovery operations.
      */
     public const MAX_SCAN_DEPTH = 10;
+
+    /**
+     * Configuration file name for module discovery settings.
+     * The name of the configuration file that contains all
+     * module discovery options and settings.
+     */
+    public const CONFIG_FILE_NAME = 'module-discovery';
+
+    /**
+     * Default suggested directories when modules directory is not found.
+     * Array of common directory names that might contain modules
+     * to suggest to users when the default directory doesn't exist.
+     *
+     * @var array<string>
+     */
+    public const DEFAULT_SUGGESTED_DIRECTORIES = [
+        'app/Modules',
+        'modules',
+        'src/Modules',
+        'packages',
+        'app/Components',
+        'src/Components',
+    ];
+
+    /**
+     * Excluded directory names that should be skipped during scanning.
+     * Array of directory names that typically don't contain modules
+     * and should be excluded from the discovery process.
+     *
+     * @var array<string>
+     */
+    public const DEFAULT_EXCLUDED_DIRECTORIES = [
+        'vendor',
+        'node_modules',
+        'storage',
+        'bootstrap',
+        'public',
+        '.git',
+        '.svn',
+        'tests',
+        'Tests',
+        'database',
+        'resources',
+        'lang',
+    ];
 }

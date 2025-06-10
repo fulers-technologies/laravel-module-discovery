@@ -5,11 +5,11 @@ declare (strict_types = 1);
 namespace LaravelModuleDiscovery\ComposerHook\Commands;
 
 use Illuminate\Console\Command;
-use LaravelModuleDiscovery\ComposerHook\Constants\DirectoryConstants;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\DirectoryNotFoundException;
 use LaravelModuleDiscovery\ComposerHook\Exceptions\ModuleDiscoveryException;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ClassDiscoveryInterface;
 use LaravelModuleDiscovery\ComposerHook\Interfaces\ComposerLoaderInterface;
+use LaravelModuleDiscovery\ComposerHook\Interfaces\ConfigurationInterface;
 
 /**
  * ModuleDiscoverCommand handles the Artisan command for automatic module discovery.
@@ -26,7 +26,7 @@ class ModuleDiscoverCommand extends Command
      * Defines the command signature including the command name
      * and any optional parameters or flags.
      */
-    protected $signature = 'module:discover {--path= : Custom path to scan for modules} {--verbose : Display detailed output}';
+    protected $signature = 'module:discover {--path= : Custom path to scan for modules} {--dry-run : Run discovery without registering namespaces}';
 
     /**
      * The console command description.
@@ -37,16 +37,18 @@ class ModuleDiscoverCommand extends Command
 
     /**
      * Creates a new ModuleDiscoverCommand instance.
-     * Initializes the command with required dependencies for class discovery
-     * and Composer autoloader integration.
+     * Initializes the command with required dependencies for class discovery,
+     * Composer autoloader integration, and configuration management.
      *
      * Parameters:
      *   - ClassDiscoveryInterface $classDiscovery: Service for discovering classes in directories.
      *   - ComposerLoaderInterface $composerLoader: Service for registering namespaces with Composer.
+     *   - ConfigurationInterface $configuration: Service for accessing configuration values.
      */
     public function __construct(
         private readonly ClassDiscoveryInterface $classDiscovery,
-        private readonly ComposerLoaderInterface $composerLoader
+        private readonly ComposerLoaderInterface $composerLoader,
+        private readonly ConfigurationInterface $configuration
     ) {
         parent::__construct();
     }
@@ -65,9 +67,13 @@ class ModuleDiscoverCommand extends Command
 
         try {
             $modulesPath = $this->getModulesPath();
+            $isDryRun    = $this->option('dry-run') || $this->configuration->isDryRunModeEnabled();
 
-            if ($this->option('verbose')) {
+            if ($this->isVerbose()) {
                 $this->line("Scanning directory: {$modulesPath}");
+                if ($isDryRun) {
+                    $this->line("Running in dry-run mode - no namespaces will be registered");
+                }
             }
 
             // Discover classes and namespaces
@@ -75,17 +81,26 @@ class ModuleDiscoverCommand extends Command
 
             if (empty($discoveredClasses)) {
                 $this->warn('No modules found in the specified directory.');
+                $this->displaySuggestedDirectories();
                 return 0;
             }
 
-            // Register namespaces with Composer
-            $registrationResults = $this->composerLoader->registerMultipleNamespaces($discoveredClasses);
+            // Register namespaces with Composer (unless dry run)
+            $registrationResults = [];
+            $applicationSuccess  = true;
 
-            // Apply registrations to activate them
-            $applicationSuccess = $this->composerLoader->applyRegistrations();
+            if (! $isDryRun && $this->configuration->isAutoRegisterNamespacesEnabled()) {
+                $registrationResults = $this->composerLoader->registerMultipleNamespaces($discoveredClasses);
+                $applicationSuccess  = $this->configuration->isAutoApplyRegistrationsEnabled()
+                ? $this->composerLoader->applyRegistrations()
+                : true;
+            } else {
+                // In dry run mode, simulate successful registration
+                $registrationResults = array_fill_keys(array_keys($discoveredClasses), true);
+            }
 
             // Display results
-            $this->displayResults($discoveredClasses, $registrationResults, $applicationSuccess);
+            $this->displayResults($discoveredClasses, $registrationResults, $applicationSuccess, $isDryRun);
 
             return $this->determineExitCode($registrationResults, $applicationSuccess);
 
@@ -104,7 +119,7 @@ class ModuleDiscoverCommand extends Command
         } catch (ModuleDiscoveryException $e) {
             $this->error("Module discovery failed: {$e->getMessage()}");
 
-            if ($this->option('verbose') && $e->getFailedPath()) {
+            if ($this->isVerbose() && $e->getFailedPath()) {
                 $this->line("Failed path: {$e->getFailedPath()}");
             }
 
@@ -113,7 +128,7 @@ class ModuleDiscoverCommand extends Command
         } catch (\Exception $e) {
             $this->error("Unexpected error during module discovery: {$e->getMessage()}");
 
-            if ($this->option('verbose')) {
+            if ($this->isVerbose() || $this->configuration->isDebugModeEnabled()) {
                 $this->line($e->getTraceAsString());
             }
 
@@ -123,8 +138,8 @@ class ModuleDiscoverCommand extends Command
 
     /**
      * Gets the modules directory path to scan.
-     * Determines the directory path based on command options
-     * or falls back to the default modules directory.
+     * Determines the directory path based on command options,
+     * configuration settings, or falls back to the default.
      *
      * Returns:
      *   - string: The absolute path to the modules directory.
@@ -134,12 +149,26 @@ class ModuleDiscoverCommand extends Command
         $customPath = $this->option('path');
 
         if ($customPath !== null) {
-            return is_absolute_path($customPath)
+            return $this->isAbsolutePath($customPath)
             ? $customPath
             : base_path($customPath);
         }
 
-        return base_path(DirectoryConstants::DEFAULT_MODULES_DIRECTORY);
+        $configuredPath = $this->configuration->getDefaultModulesDirectory();
+        return base_path($configuredPath);
+    }
+
+    /**
+     * Checks if verbose output is enabled.
+     * Uses Laravel's built-in verbose option checking and configuration
+     * settings to determine if detailed output should be displayed.
+     *
+     * Returns:
+     *   - bool: True if verbose output is enabled, false otherwise.
+     */
+    private function isVerbose(): bool
+    {
+        return $this->getOutput()->isVerbose() || $this->configuration->isDebugModeEnabled();
     }
 
     /**
@@ -151,20 +180,30 @@ class ModuleDiscoverCommand extends Command
      *   - array<string, string> $discoveredClasses: The discovered namespace-to-path mappings.
      *   - array<string, bool> $registrationResults: Results of namespace registration attempts.
      *   - bool $applicationSuccess: Whether the final application of registrations succeeded.
+     *   - bool $isDryRun: Whether this was a dry run operation.
      */
-    private function displayResults(array $discoveredClasses, array $registrationResults, bool $applicationSuccess): void
-    {
+    private function displayResults(
+        array $discoveredClasses,
+        array $registrationResults,
+        bool $applicationSuccess,
+        bool $isDryRun
+    ): void {
         $successCount = count(array_filter($registrationResults));
         $totalCount   = count($discoveredClasses);
 
-        $this->info("Module discovery completed successfully!");
-        $this->line("Discovered {$totalCount} namespaces, registered {$successCount} successfully.");
-
-        if ($this->option('verbose')) {
-            $this->displayDetailedResults($discoveredClasses, $registrationResults);
+        if ($isDryRun) {
+            $this->info("Module discovery completed (dry run)!");
+            $this->line("Discovered {$totalCount} namespaces that would be registered.");
+        } else {
+            $this->info("Module discovery completed successfully!");
+            $this->line("Discovered {$totalCount} namespaces, registered {$successCount} successfully.");
         }
 
-        if (! $applicationSuccess) {
+        if ($this->isVerbose()) {
+            $this->displayDetailedResults($discoveredClasses, $registrationResults, $isDryRun);
+        }
+
+        if (! $isDryRun && ! $applicationSuccess) {
             $this->warn('Warning: Some registrations may not be active due to application errors.');
         }
 
@@ -180,15 +219,23 @@ class ModuleDiscoverCommand extends Command
      * Parameters:
      *   - array<string, string> $discoveredClasses: The discovered namespace-to-path mappings.
      *   - array<string, bool> $registrationResults: Results of namespace registration attempts.
+     *   - bool $isDryRun: Whether this was a dry run operation.
      */
-    private function displayDetailedResults(array $discoveredClasses, array $registrationResults): void
-    {
+    private function displayDetailedResults(
+        array $discoveredClasses,
+        array $registrationResults,
+        bool $isDryRun
+    ): void {
         $this->line('');
-        $this->line('Registered namespaces:');
+        $this->line($isDryRun ? 'Discovered namespaces (would be registered):' : 'Registered namespaces:');
 
         foreach ($discoveredClasses as $namespace => $path) {
             $status     = $registrationResults[$namespace] ?? false;
             $statusText = $status ? '<info>✓</info>' : '<error>✗</error>';
+
+            if ($isDryRun) {
+                $statusText = '<comment>~</comment>'; // Indicate dry run
+            }
 
             $this->line("  {$statusText} {$namespace} => {$path}");
         }
@@ -201,7 +248,7 @@ class ModuleDiscoverCommand extends Command
      */
     private function displayDiscoveryStatistics(): void
     {
-        if (! $this->option('verbose')) {
+        if (! $this->isVerbose()) {
             return;
         }
 
@@ -221,6 +268,24 @@ class ModuleDiscoverCommand extends Command
                 foreach ($stats['error_files'] as $errorFile) {
                     $this->line("    - {$errorFile['file']}: {$errorFile['error']}");
                 }
+            }
+        }
+    }
+
+    /**
+     * Displays suggested directories when modules directory is not found.
+     * Shows a list of common directory names that might contain modules
+     * to help users identify alternative locations.
+     */
+    private function displaySuggestedDirectories(): void
+    {
+        $suggestions = $this->configuration->getSuggestedDirectories();
+
+        if (! empty($suggestions)) {
+            $this->line('');
+            $this->line('Suggested module directories to create:');
+            foreach ($suggestions as $suggestion) {
+                $this->line("  - {$suggestion}");
             }
         }
     }
@@ -249,20 +314,20 @@ class ModuleDiscoverCommand extends Command
 
         return ($allSuccessful && $applicationSuccess) ? 0 : 1;
     }
-}
 
-/**
- * Helper function to check if a path is absolute.
- * Determines whether the provided path is absolute and does not
- * require base path resolution for proper directory access.
- *
- * Parameters:
- *   - string $path: The path to check.
- *
- * Returns:
- *   - bool: True if the path is absolute, false otherwise.
- */
-function is_absolute_path(string $path): bool
-{
-    return str_starts_with($path, '/') || preg_match('/^[a-zA-Z]:[\\\\\/]/', $path);
+    /**
+     * Checks if a path is absolute.
+     * Determines whether the provided path is absolute and does not
+     * require base path resolution for proper directory access.
+     *
+     * Parameters:
+     *   - string $path: The path to check.
+     *
+     * Returns:
+     *   - bool: True if the path is absolute, false otherwise.
+     */
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, '/') || preg_match('/^[a-zA-Z]:[\\\\\/]/', $path);
+    }
 }

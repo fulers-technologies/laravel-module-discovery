@@ -70,4 +70,24 @@ final class TokenConstants
      * excessive processing of large PHP files.
      */
     public const MAX_TOKENS_TO_EXAMINE = 100;
+
+    /**
+     * Default maximum tokens to examine from configuration.
+     * Fallback value when configuration is not available or invalid.
+     */
+    public const DEFAULT_MAX_TOKENS_TO_EXAMINE = 100;
+
+    /**
+     * Minimum number of tokens required for valid namespace detection.
+     * The minimum number of tokens that must be present to attempt
+     * namespace extraction from a PHP file.
+     */
+    public const MIN_TOKENS_FOR_NAMESPACE = 3;
+
+    /**
+     * Token buffer size for efficient parsing operations.
+     * The number of tokens to process in each parsing iteration
+     * to balance memory usage and performance.
+     */
+    public const TOKEN_BUFFER_SIZE = 50;
 }
