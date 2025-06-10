@@ -1,0 +1,54 @@
+{
+    "name": "laravel-module-discovery/composer-hook",
+    "description": "Laravel Composer Hook for Automatic Class Discovery",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "composer", "autoload", "discovery", "modules"],
+    "authors": [
+        {
+            "name": "Module Discovery Team",
+            "email": "team@example.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/console": "^10.0|^11.0",
+        "illuminate/support": "^10.0|^11.0",
+        "composer/composer": "^2.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "orchestra/testbench": "^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "LaravelModuleDiscovery\\ComposerHook\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LaravelModuleDiscovery\\ComposerHook\\Tests\\": "__tests__/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LaravelModuleDiscovery\\ComposerHook\\Providers\\ModuleDiscoveryServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "post-install-cmd": [
+            "php artisan module:discover"
+        ],
+        "post-update-cmd": [
+            "php artisan module:discover"
+        ],
+        "post-autoload-dump": [
+            "php artisan module:discover"
+        ]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
